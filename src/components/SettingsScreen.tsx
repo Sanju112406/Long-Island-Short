@@ -255,7 +255,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-start justify-between">
               <div className="space-y-0.5">
                 <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                  Gemini 3.8 Flash
+                  Gemini AI
                 </span>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Adaptive voice intent & physical landmark reasoning

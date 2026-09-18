@@ -302,6 +302,14 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
 
   const content = (
     <div className="space-y-4 text-slate-900 dark:text-slate-100">
+      {/* Developer-only notice — this console is never shown to end users */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60">
+        <Terminal className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+        <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300">
+          Developer Mode — internal debug view, not part of the commuter experience
+        </span>
+      </div>
+
       {/* Top Header Card */}
       <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 text-white shadow-lg border border-slate-700/60 relative overflow-hidden">
         <div className="flex items-start justify-between relative z-10">
@@ -311,7 +319,7 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
               <h3 className="text-sm font-black tracking-tight">API Health & Service Diagnostics</h3>
             </div>
             <p className="text-[11px] text-slate-300 mt-1 max-w-[260px]">
-              Live connectivity verification for Gemini 1.5 Flash, OneMap Singapore SLA, & LTA DataMall
+              Live connectivity verification for Gemini ({report?.gemini.details?.model || 'model TBD'}), OneMap Singapore SLA, & LTA DataMall
             </p>
           </div>
 
@@ -429,7 +437,7 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black">Gemini 1.5 Flash</h4>
+                  <h4 className="text-xs font-black">{report?.gemini.details?.model || 'Gemini AI'}</h4>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400">
                     Voice intent reasoning & emotional de-escalation
                   </p>
