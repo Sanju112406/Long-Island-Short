@@ -83,9 +83,6 @@ surfaced in the UI.
 
 ### Documented but not wired in
 
-A few PS2-brief sources are genuinely useful but weren't integrated, so the
-app doesn't pretend to have them:
-
 - **Public holidays / school terms / HDB & population / historical
   ridership** — available on the [data.gov.sg catalogue](https://data.gov.sg/datasets),
   but each needs its own dataset ID looked up before it can be called; left
