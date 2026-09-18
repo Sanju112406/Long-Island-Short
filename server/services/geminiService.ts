@@ -55,6 +55,7 @@ export interface AskCompanionParams {
     totalSteps: number;
     eta?: string;
   };
+  conversationHistory?: Array<{ sender: 'user' | 'companion'; text: string }>;
 }
 
 export interface CompanionAgentResponse {
@@ -153,14 +154,14 @@ export const EYES_UP_TOOL_DECLARATIONS = [
       },
       {
         name: 'planJourney',
-        description: 'Plan a dynamic Singapore transit journey from origin to destination.',
+        description: 'Plan a dynamic Singapore transit journey from origin to destination. Omit origin only if the commuter has a live GPS location available (it will be used automatically) — otherwise ask the commuter where they are starting from before calling this.',
         parameters: {
           type: 'object',
           properties: {
             origin: { type: 'string' },
             destination: { type: 'string' },
           },
-          required: ['origin', 'destination'],
+          required: ['destination'],
         },
       },
       {
@@ -298,15 +299,20 @@ export async function executeDeterministicTool(
     }
 
     case 'planJourney': {
+      // Reuse the origin the commuter already entered on the planner screen
+      // (if any) before ever falling through to "ask" or "guess". Only when
+      // NONE of these are known — no explicit arg, no already-planned journey,
+      // no GPS — does planJourney fall to its neutral central-Singapore default.
+      const alreadyKnownOrigin = context.journey?.origin || context.journeyState?.origin;
       return await planJourney({
-        origin: args?.origin || 'NUS',
+        origin: args?.origin || alreadyKnownOrigin || '',
         destination: args?.destination || 'Orchard',
         currentLocation: context.currentLocation,
       });
     }
 
     case 'recalculateJourney': {
-      const loc = context.currentLocation || { lat: 1.3008, lng: 103.8558 };
+      const loc = context.currentLocation || { lat: 1.304, lng: 103.8318 };
       const dest = context.journey?.destination || context.journeyState?.destination || 'Bugis Junction';
       return await recalculateJourney({
         currentLocation: loc,
@@ -365,10 +371,12 @@ All transit facts MUST come from calling tools.
 If you need transport telemetry, call the appropriate tool.
 
 Agent Guidelines:
-1. EMPATHY & DE-ESCALATION FIRST: If the commuter expresses panic, fear, or missed stops, your FIRST sentence must calm their nervous system (e.g. "Take a gentle breath, I'm right here with you. You are completely safe.").
+1. EMPATHY & DE-ESCALATION FIRST: If the commuter expresses panic, fear, or missed stops, your FIRST sentence must calm their nervous system in your own words — never the same opening twice in a row.
 2. NO SCOLDING: Never tell them they made a mistake. Reframe unexpected stops as quick reroutes.
-3. PHYSICAL VISUAL ANCHORS: Anchor turns to tangible landmarks (FairPrice, Toast Box, MRT Gantries, Lift B, covered linkways). Never quote raw GPS meters alone.
+3. PHYSICAL VISUAL ANCHORS: Anchor turns to the SPECIFIC landmark name given to you in this context or returned by a tool call — never substitute a generic or example landmark. Never quote raw GPS meters alone.
 4. EYES-UP CONCISENESS: Keep final responses between 18 to 35 words. Commuters are walking with earpieces.
+5. VARY YOUR PHRASING: Never reuse the same sentence structure or wording you've used earlier in this conversation. Sound like a person, not a script.
+6. NEVER GUESS A STARTING POINT: If the commuter asks to go somewhere new and you do NOT have their live GPS location (see "Live GPS Location" below) and they haven't stated where they're starting from, ASK them where they are before calling planJourney. Do not silently assume any specific origin — a wrong guessed starting point is worse than asking a quick clarifying question.
 
 ${personaDirective}
 
@@ -376,6 +384,7 @@ Current Context:
 - Active Landmark: ${params.currentStep?.landmark || 'Covered Linkway'}
 - Current Step: ${params.currentStep?.title || 'Walking towards transit connection'}
 - Journey: ${params.journeyState?.origin || 'Origin'} to ${params.journeyState?.destination || 'Destination'}
+- Live GPS Location: ${params.currentLocation ? `Available (${params.currentLocation.lat.toFixed(4)}, ${params.currentLocation.lng.toFixed(4)})` : 'NOT available — do not assume a starting point'}
 - Missed Stop: ${params.isMissedStop ? 'YES' : 'NO'}
 - Disrupted: ${params.isDisrupted ? 'YES' : 'NO'}
 - Commuter Distress: ${isPanicked ? 'YES - DE-ESCALATE IMMEDIATELY' : 'NO'}`;
@@ -416,17 +425,21 @@ Current Context:
         }
       };
 
+      // Prior turns of this conversation, so Gemini knows what it already said
+      // and varies its phrasing instead of re-deriving the same opener each call.
+      const historyContents = (params.conversationHistory || []).map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: m.text }],
+      }));
+      const currentTurn = { role: 'user', parts: [{ text: params.question }] };
+
       // First turn with tools
       const response = await generateWithModelFallback({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: `${systemInstruction}\n\nCommuter Voice Query: "${params.question}"` }],
-          },
-        ],
+        contents: [...historyContents, currentTurn],
         config: {
+          systemInstruction,
           tools: EYES_UP_TOOL_DECLARATIONS as any,
-          temperature: 0.35,
+          temperature: 0.65,
           maxOutputTokens: 180,
         },
       });
@@ -445,10 +458,8 @@ Current Context:
         // Second turn: pass tool response back to Gemini for conversational synthesis
         const followup = await generateWithModelFallback({
           contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${systemInstruction}\n\nCommuter Voice Query: "${params.question}"` }],
-            },
+            ...historyContents,
+            currentTurn,
             {
               role: 'model',
               parts: [modelPart as any],
@@ -466,7 +477,8 @@ Current Context:
             },
           ],
           config: {
-            temperature: 0.35,
+            systemInstruction,
+            temperature: 0.65,
             maxOutputTokens: 120,
           },
         });
@@ -596,4 +608,68 @@ Current Context:
     emotionalStateDetected: 'calm',
     agentAction: 'navigate',
   };
+}
+
+export interface NarrateStepParams {
+  step: JourneyStep;
+  familiarityMode?: FamiliarityLevel;
+  persona?: 'rachel' | 'arjun' | 'lim' | 'default';
+}
+
+export interface NarrateStepResponse {
+  text: string;
+  source: 'gemini' | 'deterministic_engine';
+}
+
+/**
+ * Rephrase the deterministic step guidance naturally and with variety each time,
+ * without changing any of the underlying facts (landmark, direction, distance).
+ * "Code computes transport truth; Gemini explains it" — same guardrail as the
+ * chat companion, just applied to the guidance that's spoken automatically on
+ * every step, which previously always recited the same fixed template string.
+ */
+export async function narrateStepGuidance(params: NarrateStepParams): Promise<NarrateStepResponse> {
+  const fam = params.familiarityMode || 'full';
+  const fallbackText = params.step.guidance[fam] || params.step.guidance.full;
+
+  const ai = getGeminiClient();
+  if (!ai) {
+    return { text: fallbackText, source: 'deterministic_engine' };
+  }
+
+  const wordLimit = fam === 'light' ? 14 : fam === 'medium' ? 22 : 32;
+
+  try {
+    const targetModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const response = await ai.models.generateContent({
+      model: targetModel,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `Rephrase this Singapore transit navigation instruction naturally and warmly, in fresh wording of your own — do not reuse the exact sentence structure below. Do NOT change or invent any facts: keep the landmark name, direction, and distance exactly accurate. Under ${wordLimit} words. Reply with only the rephrased instruction, no preamble.
+
+Landmark: "${params.step.landmark || 'the next waypoint'}" (${params.step.landmarkDetail || 'ahead'})
+Original instruction: "${fallbackText}"`,
+            },
+          ],
+        },
+      ],
+      config: {
+        temperature: 0.8,
+        maxOutputTokens: 120,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+    const text = response.text?.trim();
+    if (text) {
+      return { text, source: 'gemini' };
+    }
+  } catch (err) {
+    console.warn('[Gemini] Step narration failed, using deterministic guidance:', err);
+  }
+
+  return { text: fallbackText, source: 'deterministic_engine' };
 }

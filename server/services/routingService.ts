@@ -576,6 +576,50 @@ function calculateEtaString(minutesToAdd: number): string {
 }
 
 /**
+ * Parse a "9:04 AM" / "6:30 PM" style string into minutes since midnight.
+ */
+function parseTimeToMinutes(timeStr: string): number | null {
+  const match = timeStr?.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return null;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const meridiem = match[3]?.toUpperCase();
+  if (meridiem === 'PM' && hours !== 12) hours += 12;
+  if (meridiem === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
+/**
+ * Compare a commuter's stated desired arrival time against the calculated ETA
+ * to produce a genuine on-time/late status — instead of a hardcoded "On schedule"
+ * that never reflected whether the desired time was actually achievable.
+ */
+export function computeArrivalStatus(
+  desiredArrivalTime: string | undefined,
+  calculatedETA: string | undefined
+): { statusText: string; bufferMinutes: number | null } {
+  const desiredMin = desiredArrivalTime ? parseTimeToMinutes(desiredArrivalTime) : null;
+  const etaMin = calculatedETA ? parseTimeToMinutes(calculatedETA) : null;
+
+  if (desiredMin === null || etaMin === null) {
+    return { statusText: 'On schedule', bufferMinutes: null };
+  }
+
+  // Handle wraparound past midnight
+  let diff = desiredMin - etaMin;
+  if (diff < -12 * 60) diff += 24 * 60;
+  if (diff > 12 * 60) diff -= 24 * 60;
+
+  if (diff >= 10) {
+    return { statusText: `On schedule (${diff} min buffer)`, bufferMinutes: diff };
+  } else if (diff >= 0) {
+    return { statusText: `Cutting it close (${diff} min buffer)`, bufferMinutes: diff };
+  } else {
+    return { statusText: `Running ${Math.abs(diff)} min late`, bufferMinutes: diff };
+  }
+}
+
+/**
  * Plan any journey dynamically
  * Primary source: OneMap Public Transport API
  * Fallback: Deterministic Singapore multimodal engine
@@ -615,7 +659,7 @@ export async function planJourney(input: PlanJourneyInput): Promise<Journey> {
 
         // Convert OneMap legs to Eyes-Up JourneySteps
         const legs = itin.legs || [];
-        steps = legs.map((leg: any, idx: number) => {
+        steps = await Promise.all(legs.map(async (leg: any, idx: number) => {
           const mode = (leg.mode || 'WALK').toUpperCase();
           const type: TransportType =
             mode === 'BUS' ? 'bus' : mode === 'SUBWAY' || mode === 'RAIL' ? 'mrt' : 'walk';
@@ -623,13 +667,14 @@ export async function planJourney(input: PlanJourneyInput): Promise<Journey> {
           const legDuration = Math.max(1, Math.round((leg.duration || 120) / 60));
           const legDist = Math.round(leg.distance || 200);
 
-          // Get verified Singapore landmark for this leg's starting point
+          // Get a real landmark for this leg's starting point (live OneMap reverse
+          // geocode, anywhere in Singapore — not just the curated fallback list)
           const startPt = { lat: leg.from?.lat || originCoord.lat, lng: leg.from?.lon || originCoord.lng };
           const endPt = { lat: leg.to?.lat || destCoord.lat, lng: leg.to?.lon || destCoord.lng };
           polylineCoords.push([startPt.lat, startPt.lng]);
           polylineCoords.push([endPt.lat, endPt.lng]);
 
-          const lm = getLandmarkContext({
+          const lm = await getLandmarkContext({
             currentLocation: startPt,
             nextManeuver: leg.from?.name || 'Proceed towards destination',
           });
@@ -661,7 +706,7 @@ export async function planJourney(input: PlanJourneyInput): Promise<Journey> {
               [endPt.lat, endPt.lng],
             ],
           };
-        });
+        }));
       }
     } catch (err) {
       console.warn('[Routing] Live OneMap processing fell back to deterministic router:', err);
@@ -710,8 +755,8 @@ export async function planJourney(input: PlanJourneyInput): Promise<Journey> {
       totalDurationMins = Math.max(15, Math.round(directDist / 350)); // ~21 km/h average speed in SG
 
       // Leg 1: Walk to nearest transit
-      const startLm = getLandmarkContext({ currentLocation: originCoord });
-      const destLm = getLandmarkContext({ currentLocation: destCoord });
+      const startLm = await getLandmarkContext({ currentLocation: originCoord });
+      const destLm = await getLandmarkContext({ currentLocation: destCoord });
 
       const midPt: LatLng = {
         lat: (originCoord.lat + destCoord.lat) / 2,

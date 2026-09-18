@@ -26,8 +26,10 @@ import {
   SINGAPORE_ROUTES,
   planJourney,
   recalculateJourney,
+  computeArrivalStatus,
 } from "./server/services/routingService";
 import { assessJourneyImpact } from "./server/services/journeyImpactEngine";
+import { createOrUpdateShare, getShare } from "./server/services/shareService";
 import {
   findNearestLandmark,
   calculateDistanceMeters,
@@ -38,7 +40,7 @@ import {
   getOneMapPublicTransportRoute,
   getOneMapEmail,
 } from "./server/services/oneMapService";
-import { askEyesUpCompanion } from "./server/services/geminiService";
+import { askEyesUpCompanion, narrateStepGuidance } from "./server/services/geminiService";
 import {
   runFullDiagnostic,
   testGeminiConnectivity,
@@ -275,8 +277,12 @@ async function startServer() {
   app.post("/api/journey/plan", async (req, res) => {
     try {
       const { origin, destination, preferences, currentLocation, desiredArrivalTime } = req.body;
-      if (!origin || !destination) {
-        return res.status(400).json({ error: "Origin and destination are required" });
+      // Origin can be blank if a live GPS currentLocation is supplied instead —
+      // planJourney() already prefers currentLocation over the origin string.
+      if (!destination || (!origin && !currentLocation)) {
+        return res.status(400).json({
+          error: "Destination is required, along with either an origin or a live currentLocation",
+        });
       }
       const journey = await planJourney({
         origin,
@@ -288,6 +294,55 @@ async function startServer() {
       res.json(journey);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to plan journey", details: err?.message });
+    }
+  });
+
+  // Compare a commuter's desired arrival time against the calculated ETA for a
+  // genuine on-time/late status, instead of an always-"On schedule" placeholder.
+  app.get("/api/journey/arrival-status", (req, res) => {
+    try {
+      const desiredArrivalTime = typeof req.query.desiredArrivalTime === "string" ? req.query.desiredArrivalTime : undefined;
+      const calculatedETA = typeof req.query.calculatedETA === "string" ? req.query.calculatedETA : undefined;
+      res.json(computeArrivalStatus(desiredArrivalTime, calculatedETA));
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to compute arrival status", details: err?.message });
+    }
+  });
+
+  // Push the sender's live journey progress to a shareable ID (no auth, no GPS —
+  // only ETA/progress/status, matching the app's stated privacy guarantee).
+  app.post("/api/share/update", (req, res) => {
+    try {
+      const { shareId, recipientName, destination, currentETA, progressPercentage, statusText, isArrived } = req.body;
+      if (!shareId) {
+        return res.status(400).json({ error: "shareId is required" });
+      }
+      const record = createOrUpdateShare(shareId, {
+        recipientName: recipientName || "Friend",
+        destination: destination || "",
+        currentETA: currentETA || "",
+        progressPercentage: typeof progressPercentage === "number" ? progressPercentage : 0,
+        statusText: statusText || "On schedule",
+        lastUpdated: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isArrived: !!isArrived,
+      });
+      res.json(record);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to update share", details: err?.message });
+    }
+  });
+
+  // Public, unauthenticated read for anyone with the share link — what a friend's
+  // browser polls. Intentionally exposes no GPS/coordinates, only ETA and progress.
+  app.get("/api/share/:shareId", (req, res) => {
+    try {
+      const record = getShare(req.params.shareId);
+      if (!record) {
+        return res.status(404).json({ error: "This share link has expired or does not exist." });
+      }
+      res.json(record);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch share", details: err?.message });
     }
   });
 
@@ -432,6 +487,8 @@ async function startServer() {
         isDisrupted,
         isMissedStop,
         journeyState,
+        conversationHistory,
+        currentLocation,
       } = req.body;
 
       const result = await askEyesUpCompanion({
@@ -442,6 +499,8 @@ async function startServer() {
         isDisrupted,
         isMissedStop,
         journeyState,
+        conversationHistory,
+        currentLocation,
       });
 
       return res.json({
@@ -459,6 +518,20 @@ async function startServer() {
         reply: getRuleBasedResponse(question, currentStep, familiarityMode, isMissedStop, isDisrupted),
         source: "fallback",
       });
+    }
+  });
+
+  // Rephrase deterministic step guidance naturally via Gemini (same facts, varied wording)
+  app.post("/api/companion/narrate-step", async (req, res) => {
+    try {
+      const { step, familiarityMode, persona } = req.body;
+      if (!step || !step.guidance) {
+        return res.status(400).json({ error: "A valid step with guidance is required" });
+      }
+      const result = await narrateStepGuidance({ step, familiarityMode, persona });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to narrate step", details: err?.message });
     }
   });
 

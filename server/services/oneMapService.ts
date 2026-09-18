@@ -158,6 +158,60 @@ export async function searchOneMapLocation(searchVal: string): Promise<any[]> {
   return getCuratedSingaporeSearchResults(trimmed);
 }
 
+export interface ReverseGeocodeResult {
+  buildingName: string;
+  road: string;
+  postalCode: string;
+  lat: number;
+  lng: number;
+  source: 'LIVE_ONEMAP';
+}
+
+/**
+ * Reverse-geocode any Singapore coordinate to the nearest real building/address.
+ * GET https://www.onemap.gov.sg/api/public/revgeocode
+ * Unlike a fixed curated landmark list, this works for literally any point in
+ * Singapore, not just a hand-picked set of locations.
+ */
+export async function reverseGeocodeOneMap(lat: number, lng: number): Promise<ReverseGeocodeResult | null> {
+  const token = await getOneMapAccessToken();
+  if (!token) return null;
+
+  try {
+    const url = `https://www.onemap.gov.sg/api/public/revgeocode?location=${lat},${lng}&buffer=150&addressType=All&otherFeatures=Y`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: token,
+        'User-Agent': 'EyesUp-Singapore/1.0',
+      },
+      signal: AbortSignal.timeout(4000),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const info = data.GeocodeInfo?.[0];
+      if (info) {
+        const rawName = info.BUILDINGNAME;
+        const buildingName = rawName && rawName !== 'NIL' ? rawName : `${info.BLOCK || ''} ${info.ROAD || ''}`.trim();
+        return {
+          buildingName: buildingName || info.ROAD || 'this location',
+          road: info.ROAD || '',
+          postalCode: info.POSTALCODE || '',
+          lat: parseFloat(info.LATITUDE) || lat,
+          lng: parseFloat(info.LONGITUDE) || lng,
+          source: 'LIVE_ONEMAP',
+        };
+      }
+    } else {
+      console.warn(`[OneMap] Reverse geocode returned HTTP ${res.status}`);
+    }
+  } catch (err) {
+    console.warn('[OneMap] Reverse geocode failed:', err);
+  }
+
+  return null;
+}
+
 /**
  * Query OneMap Public Transport Routing API
  * GET https://www.onemap.gov.sg/api/public/routingsvc/route

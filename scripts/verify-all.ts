@@ -55,7 +55,7 @@ async function runTests() {
   const nearestToaPayoh = findNearestLandmark({ lat: 1.3328, lng: 103.8488 }, 1000);
   assert('Finds landmarks near Toa Payoh Hub', !!nearestToaPayoh && !!nearestToaPayoh.landmark);
 
-  const context = getLandmarkContext({
+  const context = await getLandmarkContext({
     currentLocation: { lat: 1.3328, lng: 103.8488 },
     nextManeuver: 'TURN_LEFT',
   });

@@ -15,7 +15,7 @@ export const ETAShareView: React.FC<ETAShareViewProps> = ({
   const contacts = ['Mum', 'Nishikaa', 'Ryan'];
 
   const handleCopy = () => {
-    const link = `https://eyesup.sg/share/${sharedState.shareId}`;
+    const link = `${window.location.origin}/share/${sharedState.shareId}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(link);
     }
@@ -143,7 +143,7 @@ export const ETAShareView: React.FC<ETAShareViewProps> = ({
         </button>
 
         <p className="text-[11px] text-center text-slate-400 dark:text-slate-500">
-          Link: https://eyesup.sg/share/{sharedState.shareId}
+          Link: {typeof window !== 'undefined' ? window.location.origin : ''}/share/{sharedState.shareId}
         </p>
       </div>
     </div>

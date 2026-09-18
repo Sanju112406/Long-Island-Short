@@ -125,7 +125,7 @@ export interface SharedETAState {
   destination: string;
   currentETA: string;
   progressPercentage: number;
-  statusText: 'On schedule' | 'Slight delay (+7 min)' | 'Alternative route taken' | 'Arrived safely';
+  statusText: string;
   lastUpdated: string;
   isArrived: boolean;
 }

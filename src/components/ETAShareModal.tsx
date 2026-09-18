@@ -21,7 +21,7 @@ export const ETAShareModal: React.FC<ETAShareModalProps> = ({
   if (!isOpen) return null;
 
   const handleCopyLink = () => {
-    const link = `https://eyesup.sg/share/${sharedState.shareId}`;
+    const link = `${window.location.origin}/share/${sharedState.shareId}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(link);
     }
@@ -146,7 +146,7 @@ export const ETAShareModal: React.FC<ETAShareModalProps> = ({
                 <div className="flex items-center gap-2">
                   <input
                     readOnly
-                    value={`https://eyesup.sg/share/${sharedState.shareId}`}
+                    value={`${window.location.origin}/share/${sharedState.shareId}`}
                     className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 font-mono select-all"
                   />
                   <button

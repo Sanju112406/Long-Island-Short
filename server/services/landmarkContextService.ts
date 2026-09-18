@@ -3,7 +3,12 @@
  * Converts raw navigation geometry into Eyes-Up Singapore landmark guidance.
  * Ensures the agent anchors turns and maneuvers to verified physical Singapore landmarks
  * rather than abstract GPS coordinates.
+ *
+ * Primary source is a live OneMap reverse-geocode lookup — real building names for any
+ * coordinate in Singapore. The curated VERIFIED_SINGAPORE_LANDMARKS list below is only
+ * a fallback for when OneMap is unreachable/unauthenticated, so guidance never goes blank.
  */
+import { reverseGeocodeOneMap } from './oneMapService';
 
 export interface LatLng {
   lat: number;
@@ -273,16 +278,36 @@ export function findNearestLandmark(
 }
 
 /**
- * Convert navigation geometry and location into eyes-up landmark guidance
+ * Convert navigation geometry and location into eyes-up landmark guidance.
+ * Tries a live OneMap reverse-geocode lookup first (works anywhere in Singapore);
+ * only falls back to the small curated catalog if OneMap is unreachable/unauthenticated.
  */
-export function getLandmarkContext(input: LandmarkContextInput): LandmarkContextResult {
+export async function getLandmarkContext(input: LandmarkContextInput): Promise<LandmarkContextResult> {
   const pos = input.currentLocation || input.originCoords || { lat: 1.3040, lng: 103.8318 };
-  const nearest = findNearestLandmark(pos, 8000);
 
-  const landmarkName = nearest ? nearest.landmark.name : 'MRT Station Concourse';
-  const landmarkDetail = nearest ? nearest.landmark.detail : 'Sheltered pedestrian linkway';
-  const icon = nearest?.landmark.icon || 'landmark';
-  const dist = nearest ? nearest.distanceMeters : 120;
+  let landmarkName: string;
+  let landmarkDetail: string;
+  let icon: VerifiedLandmark['icon'] = 'landmark';
+  let dist: number;
+  let confidence: number;
+
+  const live = await reverseGeocodeOneMap(pos.lat, pos.lng);
+  if (live) {
+    landmarkName = live.buildingName;
+    landmarkDetail = live.road ? `Along ${live.road}${live.postalCode ? `, Singapore ${live.postalCode}` : ''}` : 'Nearby landmark';
+    dist = 0; // reverse geocode returns what's essentially at this point
+    confidence = 0.9;
+  } else {
+    // A tight radius so a genuinely distant point falls through to the generic
+    // fallback below instead of being force-matched to whichever of the ~20
+    // catalog entries happens to be least-far-away (e.g. "FairPrice" 6km off route).
+    const nearest = findNearestLandmark(pos, 2000);
+    landmarkName = nearest ? nearest.landmark.name : 'MRT Station Concourse';
+    landmarkDetail = nearest ? nearest.landmark.detail : 'Sheltered pedestrian linkway';
+    icon = nearest?.landmark.icon || 'landmark';
+    dist = nearest ? nearest.distanceMeters : 120;
+    confidence = nearest ? 0.95 : 0.75;
+  }
 
   // Determine relationship based on distance & maneuver
   let relationship: 'AFTER' | 'BEFORE' | 'PAST' | 'AT' | 'ALONGSIDE' = 'AT';
@@ -307,7 +332,7 @@ export function getLandmarkContext(input: LandmarkContextInput): LandmarkContext
     landmark: landmarkName,
     landmarkDetail,
     relationship,
-    confidence: nearest ? 0.95 : 0.75,
+    confidence,
     guidance: {
       full: fullGuidance,
       medium: mediumGuidance,

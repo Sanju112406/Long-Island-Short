@@ -48,6 +48,15 @@ import { DiagnosticConsole } from './components/DiagnosticConsole';
 import { BottomNavBar, NavTab } from './components/BottomNavBar';
 import { MessageSquare, Sparkles, CheckCircle2, Navigation } from 'lucide-react';
 
+// A short, URL-safe id for a real shareable ETA link (persisted in localStorage
+// per session so refreshing doesn't invalidate a link already sent to a friend).
+function generateShareId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().slice(0, 8);
+  }
+  return Math.random().toString(36).slice(2, 10);
+}
+
 export default function App() {
   // Navigation tab state matching architecture diagram Section 4.
   // Starts on the planner, not Travel — Travel shows `journey` state, which is
@@ -114,16 +123,16 @@ export default function App() {
   });
 
   // ETA sharing state
-  const [sharedState, setSharedState] = useState<SharedETAState>({
-    shareId: 'sg-live-892',
+  const [sharedState, setSharedState] = useState<SharedETAState>(() => ({
+    shareId: generateShareId(),
     recipientName: 'Mom',
     destination: DEFAULT_JOURNEY.destination,
     currentETA: DEFAULT_JOURNEY.calculatedETA,
-    progressPercentage: 10,
+    progressPercentage: 0,
     statusText: 'On schedule',
     lastUpdated: 'Just now',
     isArrived: false,
-  });
+  }));
 
   // Conversational history
   const [messages, setMessages] = useState<CompanionMessage[]>([
@@ -167,6 +176,24 @@ export default function App() {
       lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isArrived,
     }));
+
+    // Refine the generic "On schedule" into a genuine comparison against the
+    // commuter's actual desired arrival time, once it's not already a more
+    // specific state (arrived / missed stop / disruption reroute).
+    if (!isArrived && !missedStopState.isMissed && !disruption.active && journey.desiredArrivalTime) {
+      const params = new URLSearchParams({
+        desiredArrivalTime: journey.desiredArrivalTime,
+        calculatedETA: currentETA,
+      });
+      fetch(`/api/journey/arrival-status?${params}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.statusText) {
+            setSharedState((prev) => ({ ...prev, statusText: data.statusText }));
+          }
+        })
+        .catch(() => {});
+    }
   }, [currentStepIndex, journey, missedStopState.isMissed, disruption.active]);
 
   // Restore saved session on initial mount
@@ -180,6 +207,9 @@ export default function App() {
         if (parsed.familiarity) setFamiliarity(parsed.familiarity);
         if (parsed.persona) setPersona(parsed.persona);
         if (typeof parsed.isPowerSaving === 'boolean') setIsPowerSaving(parsed.isPowerSaving);
+        if (typeof parsed.shareId === 'string') {
+          setSharedState((prev) => ({ ...prev, shareId: parsed.shareId }));
+        }
       }
     } catch (e) {
       console.warn('Could not restore local session:', e);
@@ -197,12 +227,42 @@ export default function App() {
           familiarity,
           persona,
           isPowerSaving,
+          shareId: sharedState.shareId,
         })
       );
     } catch (e) {
       // Storage quota or private browsing
     }
-  }, [journey, currentStepIndex, familiarity, persona, isPowerSaving]);
+  }, [journey, currentStepIndex, familiarity, persona, isPowerSaving, sharedState.shareId]);
+
+  // Push the sender's live progress to the server so anyone with the share
+  // link (no login) can poll for real, current status — not just a preview
+  // rendered locally in the sender's own tab.
+  useEffect(() => {
+    fetch('/api/share/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        shareId: sharedState.shareId,
+        recipientName: sharedState.recipientName,
+        destination: sharedState.destination,
+        currentETA: sharedState.currentETA,
+        progressPercentage: sharedState.progressPercentage,
+        statusText: sharedState.statusText,
+        isArrived: sharedState.isArrived,
+      }),
+    }).catch(() => {
+      // Best-effort — the sender's own view still works from local state either way.
+    });
+  }, [
+    sharedState.shareId,
+    sharedState.recipientName,
+    sharedState.destination,
+    sharedState.currentETA,
+    sharedState.progressPercentage,
+    sharedState.statusText,
+    sharedState.isArrived,
+  ]);
 
   // Geolocation tracking & state management
   useEffect(() => {
@@ -337,9 +397,35 @@ export default function App() {
     });
   };
 
+  // Ask Gemini to rephrase the deterministic step guidance naturally each time,
+  // instead of always reciting the same fixed template string. Same facts
+  // (landmark, direction, distance), varied wording. Falls back to the raw
+  // template instantly if Gemini is slow or unreachable.
+  const fetchNarratedGuidance = async (step: JourneyStep, fam: FamiliarityLevel): Promise<string> => {
+    const fallback = step.guidance[fam] || step.guidance.full;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch('/api/companion/narrate-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step, familiarityMode: fam, persona }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.text) return data.text;
+      }
+    } catch (e) {
+      // Network error or timeout — use the deterministic fallback below.
+    }
+    return fallback;
+  };
+
   // Speak active step guidance
-  const speakCurrentStep = () => {
-    const text = activeStep.guidance[familiarity] || activeStep.guidance.full;
+  const speakCurrentStep = async () => {
+    const text = await fetchNarratedGuidance(activeStep, familiarity);
     speakText(text);
   };
 
@@ -374,6 +460,12 @@ export default function App() {
             stepIndex: currentStepIndex,
             totalSteps: journey.steps.length,
           },
+          // Recent turns so Gemini knows what it already said and doesn't
+          // repeat the same opener/phrasing across a real conversation.
+          conversationHistory: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
+          // Real GPS location, so a voice request like "I need to go to Pasir Ris"
+          // plans from where the commuter actually is instead of a guessed origin.
+          currentLocation: userLocation,
         }),
       });
 
@@ -408,13 +500,13 @@ export default function App() {
   };
 
   // Step navigation
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (currentStepIndex < journey.steps.length - 1) {
       const nextIdx = currentStepIndex + 1;
       setCurrentStepIndex(nextIdx);
       speechService.playSubtleChime();
       const nextStep = journey.steps[nextIdx];
-      const text = nextStep.guidance[familiarity] || nextStep.guidance.full;
+      const text = await fetchNarratedGuidance(nextStep, familiarity);
       speakText(text);
     } else {
       // Arrived (Screen 7 in architecture diagram)
@@ -485,8 +577,11 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            origin: origin || 'Toa Payoh MRT',
-            destination: destination || 'Bugis Junction',
+            // Never guess a specific place when it's blank — prefer real GPS
+            // (sent below) and otherwise let the server fall through to its
+            // own neutral central-Singapore default rather than a fake origin.
+            origin: origin || '',
+            destination: destination || '',
             desiredArrivalTime: arrivalTime || '9:30 AM',
             currentLocation: userLocation,
           }),

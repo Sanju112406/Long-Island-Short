@@ -13,13 +13,42 @@ interface OneMapSearchResult {
   postalCode: string;
 }
 
+// Convert between the app's "9:30 AM" display format (used everywhere downstream)
+// and the native <input type="time"> 24-hour "HH:MM" format.
+function amPmTo24h(timeStr: string): string {
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return '09:30';
+  let h = parseInt(match[1], 10);
+  const m = match[2];
+  const period = match[3]?.toUpperCase();
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${m}`;
+}
+
+function to12hAmPm(time24: string): string {
+  const [hStr, mStr] = time24.split(':');
+  const h = parseInt(hStr, 10);
+  const period = h >= 12 ? 'PM' : 'AM';
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return `${h12}:${mStr} ${period}`;
+}
+
+// Default to 45 minutes from the actual current time, not a fixed clock-independent
+// string — so the pre-filled suggestion is always relevant to when you're planning.
+function getLiveDefaultArrivalTime(): string {
+  const target = new Date(Date.now() + 45 * 60000);
+  return target.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
   onStartJourney,
   currentRouteId,
 }) => {
   const [origin, setOrigin] = useState('NUS (University Town)');
   const [destination, setDestination] = useState('Orchard (ION Orchard)');
-  const [arrivalTime, setArrivalTime] = useState('9:30 AM');
+  const [arrivalTime, setArrivalTime] = useState(getLiveDefaultArrivalTime);
   // Empty by default: only an explicit Persona Scenario click below sets this to a
   // known preset id. Any other plan (default text, typed search, OneMap suggestion)
   // must be routed dynamically rather than served from fixed local data.
@@ -259,10 +288,9 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
             </label>
             <input
               id="journey-arrival-time-input"
-              type="text"
-              value={arrivalTime}
-              onChange={(e) => setArrivalTime(e.target.value)}
-              placeholder="e.g. 9:30 AM"
+              type="time"
+              value={amPmTo24h(arrivalTime)}
+              onChange={(e) => e.target.value && setArrivalTime(to12hAmPm(e.target.value))}
               className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
