@@ -27,7 +27,7 @@ export const PowerSaverOverlay: React.FC<PowerSaverOverlayProps> = ({
   return (
     <div
       id="power-saving-pocket-mode"
-      className="fixed inset-0 z-40 bg-black text-white flex flex-col justify-between p-6 select-none animate-in fade-in duration-300"
+      className="absolute inset-0 z-40 bg-black text-white flex flex-col justify-between p-6 select-none animate-in fade-in duration-300"
     >
       {/* Top minimal status */}
       <div className="flex items-center justify-between border-b border-neutral-900 pb-3">

@@ -12,6 +12,16 @@ import {
 } from "./server/services/ltaService";
 import { fetchSingaporeWeather } from "./server/services/weatherService";
 import {
+  fetch24HourForecast,
+  fetch4DayOutlook,
+  fetchRainfall,
+  fetchAirTemperature,
+  fetchHumidity,
+  fetchWindSpeed,
+  fetchWindDirection,
+  fetchPM25,
+} from "./server/services/environmentService";
+import {
   getRouteById,
   SINGAPORE_ROUTES,
   planJourney,
@@ -58,7 +68,7 @@ function getGeminiClient(): GoogleGenAI | null {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
 
@@ -179,6 +189,67 @@ async function startServer() {
       res.json(weather);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to fetch weather nowcast", details: err?.message });
+    }
+  });
+
+  // data.gov.sg 24-Hour Forecast (general outlook + regional periods)
+  app.get("/api/weather/24hr", async (_req, res) => {
+    try {
+      res.json(await fetch24HourForecast());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch 24-hour forecast", details: err?.message });
+    }
+  });
+
+  // data.gov.sg 4-Day Outlook (trip-planning horizon)
+  app.get("/api/weather/4day", async (_req, res) => {
+    try {
+      res.json(await fetch4DayOutlook());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch 4-day outlook", details: err?.message });
+    }
+  });
+
+  // data.gov.sg Live Rainfall (per-station mm)
+  app.get("/api/weather/rainfall", async (_req, res) => {
+    try {
+      res.json(await fetchRainfall());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch rainfall", details: err?.message });
+    }
+  });
+
+  // data.gov.sg live Air Temperature, Humidity, Wind, and PM2.5 (NEA sensor network)
+  app.get("/api/environment/air-temperature", async (_req, res) => {
+    try {
+      res.json(await fetchAirTemperature());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch air temperature", details: err?.message });
+    }
+  });
+
+  app.get("/api/environment/humidity", async (_req, res) => {
+    try {
+      res.json(await fetchHumidity());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch humidity", details: err?.message });
+    }
+  });
+
+  app.get("/api/environment/wind", async (_req, res) => {
+    try {
+      const [speed, direction] = await Promise.all([fetchWindSpeed(), fetchWindDirection()]);
+      res.json({ speed, direction });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch wind data", details: err?.message });
+    }
+  });
+
+  app.get("/api/environment/pm25", async (_req, res) => {
+    try {
+      res.json(await fetchPM25());
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch PM2.5", details: err?.message });
     }
   });
 

@@ -49,8 +49,11 @@ import { BottomNavBar, NavTab } from './components/BottomNavBar';
 import { MessageSquare, Sparkles, CheckCircle2, Navigation } from 'lucide-react';
 
 export default function App() {
-  // Navigation tab state matching architecture diagram Section 4
-  const [activeTab, setActiveTab] = useState<NavTab>('travel');
+  // Navigation tab state matching architecture diagram Section 4.
+  // Starts on the planner, not Travel — Travel shows `journey` state, which is
+  // seeded with a placeholder until a real journey is planned, so opening there
+  // first would present that placeholder as if a trip were already active.
+  const [activeTab, setActiveTab] = useState<NavTab>('plan');
   const [isArrivalComplete, setIsArrivalComplete] = useState<boolean>(false);
 
   // Current active journey
@@ -461,13 +464,15 @@ export default function App() {
     destination: string,
     arrivalTime: string
   ) => {
-    const match = PRESET_JOURNEYS.find(
-      (r) =>
-        r.id === routeKey ||
-        (destination && r.destination.toLowerCase().includes(destination.toLowerCase()))
-    );
+    // Only use a curated preset (persona demo scenarios) when the caller explicitly
+    // selected one by id AND hasn't edited its origin/destination away from the
+    // canonical values — otherwise every journey, including the default plan form,
+    // must go through live OneMap routing rather than fixed local data.
+    const match = routeKey
+      ? PRESET_JOURNEYS.find((r) => r.id === routeKey && r.origin === origin && r.destination === destination)
+      : null;
 
-    if (match && (!origin || origin === match.origin)) {
+    if (match) {
       setJourney(match);
       setHistoryCount(match.travelHistoryCount);
       if (match.travelHistoryCount === 0) setFamiliarity('full');

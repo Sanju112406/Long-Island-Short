@@ -380,16 +380,34 @@ Current Context:
 - Disrupted: ${params.isDisrupted ? 'YES' : 'NO'}
 - Commuter Distress: ${isPanicked ? 'YES - DE-ESCALATE IMMEDIATELY' : 'NO'}`;
 
-      const targetModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+      const targetModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+      const FALLBACK_MODEL = 'gemini-pro-latest';
 
-      // Helper function to attempt generation with primary model then fall back to gemini-1.5-pro if needed
+      // Flash models support disabling "thinking" for low-latency voice replies;
+      // pro-latest requires thinking mode, so it needs a larger token budget instead.
+      const configForModel = (baseConfig: any, model: string) => {
+        if (model.includes('flash')) {
+          return { ...baseConfig, thinkingConfig: { thinkingBudget: 0 } };
+        }
+        return { ...baseConfig, maxOutputTokens: Math.max(baseConfig.maxOutputTokens || 0, 512) };
+      };
+
+      // Helper function to attempt generation with primary model then fall back to gemini-pro-latest if needed
       const generateWithModelFallback = async (paramsObj: any) => {
         try {
-          return await ai.models.generateContent({ ...paramsObj, model: targetModel });
+          return await ai.models.generateContent({
+            ...paramsObj,
+            model: targetModel,
+            config: configForModel(paramsObj.config, targetModel),
+          });
         } catch (err: any) {
-          if (targetModel !== 'gemini-1.5-pro') {
+          if (targetModel !== FALLBACK_MODEL) {
             try {
-              return await ai.models.generateContent({ ...paramsObj, model: 'gemini-1.5-pro' });
+              return await ai.models.generateContent({
+                ...paramsObj,
+                model: FALLBACK_MODEL,
+                config: configForModel(paramsObj.config, FALLBACK_MODEL),
+              });
             } catch (err2: any) {
               // Re-throw to trigger deterministic companion fallback
             }
@@ -414,9 +432,11 @@ Current Context:
       });
 
       // Check if model requested tool call(s)
-      const functionCalls = response.functionCalls;
-      if (functionCalls && functionCalls.length > 0 && functionCalls[0].name) {
-        const toolCall = functionCalls[0];
+      // Use the raw content part (not response.functionCalls) so thoughtSignature
+      // survives the round-trip — Gemini 3.x rejects function replies without it.
+      const modelPart = response.candidates?.[0]?.content?.parts?.[0];
+      const toolCall = modelPart?.functionCall;
+      if (toolCall && toolCall.name) {
         const toolName = String(toolCall.name || '');
         if (toolName) {
           executedTools.push(toolName);
@@ -431,7 +451,7 @@ Current Context:
             },
             {
               role: 'model',
-              parts: [{ functionCall: toolCall } as any],
+              parts: [modelPart as any],
             },
             {
               role: 'user',

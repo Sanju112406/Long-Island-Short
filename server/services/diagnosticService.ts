@@ -84,7 +84,7 @@ export async function testGeminiConnectivity(): Promise<ServiceDiagnosticResult>
       },
     });
 
-    const targetModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    const targetModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
     const response = await ai.models.generateContent({
       model: targetModel,
       contents: [
@@ -94,8 +94,11 @@ export async function testGeminiConnectivity(): Promise<ServiceDiagnosticResult>
         },
       ],
       config: {
-        maxOutputTokens: 10,
+        maxOutputTokens: 20,
         temperature: 0.1,
+        // Flash models spend maxOutputTokens on hidden "thinking" unless disabled,
+        // which silently returns an empty response.text for small token budgets.
+        ...(targetModel.includes('flash') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
       },
     });
 

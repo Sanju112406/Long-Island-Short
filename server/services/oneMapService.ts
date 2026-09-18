@@ -132,7 +132,11 @@ export async function searchOneMapLocation(searchVal: string): Promise<any[]> {
 
     if (res.ok) {
       const data = await res.json();
-      if (data.results && Array.isArray(data.results)) {
+      // OneMap returns HTTP 200 with an `error` field (not a non-2xx status) when
+      // the request is unauthenticated/unauthorized, so res.ok alone isn't enough.
+      if (data.error) {
+        console.warn('[OneMap] Search query returned an error payload, falling back to local dataset:', data.error);
+      } else if (data.results && Array.isArray(data.results)) {
         return data.results.map((item: any) => ({
           name: item.SEARCHVAL || item.BUILDING || item.ADDRESS,
           address: item.ADDRESS,
@@ -167,7 +171,9 @@ export async function getOneMapPublicTransportRoute(
 ): Promise<any> {
   const token = await getOneMapAccessToken();
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
+  // OneMap's routing API requires MM-DD-YYYY, not ISO (YYYY-MM-DD) — sending
+  // ISO format makes every live routing request fail with a 400.
+  const dateStr = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${now.getFullYear()}`;
   const timeStr = now.toTimeString().split(' ')[0];
 
   if (token) {
@@ -187,6 +193,8 @@ export async function getOneMapPublicTransportRoute(
           data,
         };
       }
+      const errBody = await res.text();
+      console.warn(`[OneMap] Route query failed (HTTP ${res.status}), using Singapore routing engine:`, errBody);
     } catch (err) {
       console.warn('[OneMap] Route query failed, using Singapore routing engine:', err);
     }

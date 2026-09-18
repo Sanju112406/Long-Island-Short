@@ -2,6 +2,7 @@
  * Comprehensive System Verification Script for Eyes-Up AI Commuter Companion
  */
 
+import 'dotenv/config';
 import { planJourney, recalculateJourney } from '../server/services/routingService';
 import { findNearestLandmark, getLandmarkContext } from '../server/services/landmarkContextService';
 import { assessJourneyImpact } from '../server/services/journeyImpactEngine';

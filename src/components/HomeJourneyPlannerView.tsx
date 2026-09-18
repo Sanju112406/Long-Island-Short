@@ -20,7 +20,10 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
   const [origin, setOrigin] = useState('NUS (University Town)');
   const [destination, setDestination] = useState('Orchard (ION Orchard)');
   const [arrivalTime, setArrivalTime] = useState('9:30 AM');
-  const [selectedRouteKey, setSelectedRouteKey] = useState<string>('nus-orchard');
+  // Empty by default: only an explicit Persona Scenario click below sets this to a
+  // known preset id. Any other plan (default text, typed search, OneMap suggestion)
+  // must be routed dynamically rather than served from fixed local data.
+  const [selectedRouteKey, setSelectedRouteKey] = useState<string>('');
   const [originSuggestions, setOriginSuggestions] = useState<OneMapSearchResult[]>([]);
   const [destSuggestions, setDestSuggestions] = useState<OneMapSearchResult[]>([]);
   const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
@@ -44,6 +47,7 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
   // OneMap search query for origin
   const handleOriginChange = (val: string) => {
     setOrigin(val);
+    setSelectedRouteKey('');
     if (val.trim().length >= 2) {
       setIsSearchingOrigin(true);
       fetch(`/api/onemap/search?q=${encodeURIComponent(val)}`)
@@ -61,6 +65,7 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
   // OneMap search query for destination
   const handleDestChange = (val: string) => {
     setDestination(val);
+    setSelectedRouteKey('');
     if (val.trim().length >= 2) {
       setIsSearchingDest(true);
       fetch(`/api/onemap/search?q=${encodeURIComponent(val)}`)
@@ -178,6 +183,7 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
                     type="button"
                     onClick={() => {
                       setOrigin(item.name);
+                      setSelectedRouteKey('');
                       setOriginSuggestions([]);
                     }}
                     className="w-full p-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer block"
@@ -228,6 +234,7 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
                     type="button"
                     onClick={() => {
                       setDestination(item.name);
+                      setSelectedRouteKey('');
                       setDestSuggestions([]);
                     }}
                     className="w-full p-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer block"
