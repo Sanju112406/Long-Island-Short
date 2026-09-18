@@ -84,7 +84,7 @@ export async function testGeminiConnectivity(): Promise<ServiceDiagnosticResult>
       },
     });
 
-    const targetModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    const targetModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
     const response = await ai.models.generateContent({
       model: targetModel,
       contents: [

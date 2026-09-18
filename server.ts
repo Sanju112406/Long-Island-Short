@@ -350,7 +350,7 @@ async function startServer() {
     });
   });
 
-  // AI Companion Chat endpoint powered by Gemini 3.8 Flash + Singapore transit context
+  // AI Companion Chat endpoint powered by Gemini 1.5 Flash + Singapore transit context
   app.post("/api/companion/chat", async (req, res) => {
     try {
       const {

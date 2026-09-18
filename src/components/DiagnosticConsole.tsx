@@ -311,7 +311,7 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
               <h3 className="text-sm font-black tracking-tight">API Health & Service Diagnostics</h3>
             </div>
             <p className="text-[11px] text-slate-300 mt-1 max-w-[260px]">
-              Live connectivity verification for Gemini 3.8 Flash, OneMap Singapore SLA, & LTA DataMall
+              Live connectivity verification for Gemini 1.5 Flash, OneMap Singapore SLA, & LTA DataMall
             </p>
           </div>
 
@@ -429,7 +429,7 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black">Gemini 2.0 Flash</h4>
+                  <h4 className="text-xs font-black">Gemini 1.5 Flash</h4>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400">
                     Voice intent reasoning & emotional de-escalation
                   </p>

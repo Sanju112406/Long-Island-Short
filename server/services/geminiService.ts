@@ -380,18 +380,18 @@ Current Context:
 - Disrupted: ${params.isDisrupted ? 'YES' : 'NO'}
 - Commuter Distress: ${isPanicked ? 'YES - DE-ESCALATE IMMEDIATELY' : 'NO'}`;
 
-      const targetModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+      const targetModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
-      // Helper function to attempt generation with primary model then fall back to standard flash models if needed
+      // Helper function to attempt generation with primary model then fall back to gemini-1.5-pro if needed
       const generateWithModelFallback = async (paramsObj: any) => {
         try {
           return await ai.models.generateContent({ ...paramsObj, model: targetModel });
         } catch (err: any) {
-          if (targetModel !== 'gemini-2.0-flash') {
+          if (targetModel !== 'gemini-1.5-pro') {
             try {
-              return await ai.models.generateContent({ ...paramsObj, model: 'gemini-2.0-flash' });
+              return await ai.models.generateContent({ ...paramsObj, model: 'gemini-1.5-pro' });
             } catch (err2: any) {
-              return await ai.models.generateContent({ ...paramsObj, model: 'gemini-1.5-flash' });
+              // Re-throw to trigger deterministic companion fallback
             }
           }
           throw err;
