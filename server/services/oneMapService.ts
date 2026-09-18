@@ -17,10 +17,8 @@ const tokenState: OneMapTokenState = {
   lastError: null,
 };
 
-const DEFAULT_ONEMAP_EMAIL = 'e1486310@u.nus.edu';
-
 export function getOneMapEmail(): string {
-  return process.env.ONEMAP_EMAIL || DEFAULT_ONEMAP_EMAIL;
+  return process.env.ONEMAP_EMAIL || '';
 }
 
 export function hasOneMapPassword(): boolean {
@@ -42,8 +40,8 @@ export async function getOneMapAccessToken(): Promise<string | null> {
   const email = getOneMapEmail();
   const password = process.env.ONEMAP_PASSWORD;
 
-  if (!password) {
-    tokenState.lastError = 'ONEMAP_PASSWORD not configured in environment variables.';
+  if (!email || !password) {
+    tokenState.lastError = 'ONEMAP_EMAIL or ONEMAP_PASSWORD not configured in environment variables.';
     return null;
   }
 

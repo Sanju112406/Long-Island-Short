@@ -11,6 +11,7 @@ export interface WeatherNowcast {
   shelterRecommended: boolean;
   advice: string;
   lastUpdated: string;
+  source: 'LIVE_WEATHER' | 'FALLBACK_SIMULATION';
 }
 
 export async function fetchSingaporeWeather(areaName: string = 'Tanglin'): Promise<WeatherNowcast> {
@@ -49,6 +50,7 @@ export async function fetchSingaporeWeather(areaName: string = 'Tanglin'): Promi
             ? `Passing showers detected in ${matched.area}. Eyes Up will prioritize sheltered linkways and underground MRT underpasses.`
             : `Weather in ${matched.area} is clear (${forecastText}). Ideal conditions for outdoor walking.`,
           lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          source: 'LIVE_WEATHER',
         };
       }
     }
@@ -64,5 +66,6 @@ export async function fetchSingaporeWeather(areaName: string = 'Tanglin'): Promi
     shelterRecommended: false,
     advice: 'Weather is currently fair across the central corridor. Sheltered linkways available throughout.',
     lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    source: 'FALLBACK_SIMULATION',
   };
 }

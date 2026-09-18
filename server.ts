@@ -11,7 +11,17 @@ import {
   fetchTrafficIncidents,
 } from "./server/services/ltaService";
 import { fetchSingaporeWeather } from "./server/services/weatherService";
-import { getRouteById, SINGAPORE_ROUTES } from "./server/services/routingService";
+import {
+  getRouteById,
+  SINGAPORE_ROUTES,
+  planJourney,
+  recalculateJourney,
+} from "./server/services/routingService";
+import { assessJourneyImpact } from "./server/services/journeyImpactEngine";
+import {
+  findNearestLandmark,
+  calculateDistanceMeters,
+} from "./server/services/landmarkContextService";
 import {
   getOneMapStatus,
   searchOneMapLocation,
@@ -187,6 +197,107 @@ async function startServer() {
       res.json(route);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to fetch route", details: err?.message });
+    }
+  });
+
+  // Dynamic Journey Planner (OneMap Transit + Deterministic Multimodal Fallback)
+  app.post("/api/journey/plan", async (req, res) => {
+    try {
+      const { origin, destination, preferences, currentLocation, desiredArrivalTime } = req.body;
+      if (!origin || !destination) {
+        return res.status(400).json({ error: "Origin and destination are required" });
+      }
+      const journey = await planJourney({
+        origin,
+        destination,
+        preferences,
+        currentLocation,
+        desiredArrivalTime,
+      });
+      res.json(journey);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to plan journey", details: err?.message });
+    }
+  });
+
+  // Dynamic Rerouting Engine (Bypass Disrupted Lines / Recover from Missed Stops)
+  app.post("/api/journey/recalculate", async (req, res) => {
+    try {
+      const { currentLocation, destination, avoidLines, avoidStops, preferredModes, reason } = req.body;
+      if (!currentLocation || !destination) {
+        return res.status(400).json({ error: "currentLocation and destination are required" });
+      }
+      const journey = await recalculateJourney({
+        currentLocation,
+        destination,
+        avoidLines,
+        avoidStops,
+        preferredModes,
+        reason,
+      });
+      res.json(journey);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to recalculate journey", details: err?.message });
+    }
+  });
+
+  // Journey Impact Engine (Evaluates if incidents intersect the commuter's route)
+  app.post("/api/journey/impact", async (req, res) => {
+    try {
+      const { journey, currentStepIndex = 0, currentLocation, userPersona } = req.body;
+      const [trainAlerts, lifts, weather] = await Promise.all([
+        fetchTrainServiceAlerts(),
+        fetchFacilitiesMaintenance(),
+        fetchSingaporeWeather(),
+      ]);
+      const assessment = assessJourneyImpact({
+        journey,
+        currentStepIndex,
+        currentLocation,
+        trainAlerts,
+        facilityMaintenance: lifts,
+        weather,
+        userPersona,
+      });
+      res.json(assessment);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to assess journey impact", details: err?.message });
+    }
+  });
+
+  // Off-Route Perception / Deviation Detection
+  app.post("/api/journey/off-route", (req, res) => {
+    try {
+      const { currentLocation, journey } = req.body;
+      if (!currentLocation || !journey?.geometry?.length) {
+        return res.json({ offRoute: false, distanceFromRouteMeters: 0, confidence: 1 });
+      }
+      let minDist = Infinity;
+      for (const pt of journey.geometry) {
+        const d = calculateDistanceMeters(currentLocation, { lat: pt[0], lng: pt[1] });
+        if (d < minDist) minDist = d;
+      }
+      const isOff = minDist > 150;
+      res.json({
+        offRoute: isOff,
+        distanceFromRouteMeters: minDist,
+        confidence: 0.95,
+        reason: isOff ? `Commuter is ${minDist}m away from the planned transit corridor.` : 'On route',
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to detect off-route", details: err?.message });
+    }
+  });
+
+  // Nearby Verified Singapore Physical Landmarks
+  app.get("/api/landmarks/near", (req, res) => {
+    try {
+      const lat = parseFloat(req.query.lat as string) || 1.3040;
+      const lng = parseFloat(req.query.lng as string) || 103.8318;
+      const result = findNearestLandmark({ lat, lng });
+      res.json(result || { landmark: null, distanceMeters: null });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to find nearby landmark", details: err?.message });
     }
   });
 

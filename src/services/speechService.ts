@@ -122,6 +122,49 @@ class SpeechService {
       // AudioContext might require user interaction first
     }
   }
+
+  public isRecognitionSupported(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+    );
+  }
+
+  public startListening(
+    onResult: (text: string) => void,
+    onError?: (err: any) => void
+  ): any {
+    if (!this.isRecognitionSupported()) {
+      onError?.(new Error('Speech recognition not supported in this browser.'));
+      return null;
+    }
+
+    try {
+      const SpeechRecognitionClass =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = 'en-SG';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          onResult(transcript);
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        onError?.(e);
+      };
+
+      recognition.start();
+      return recognition;
+    } catch (err) {
+      onError?.(err);
+      return null;
+    }
+  }
 }
 
 export const speechService = new SpeechService();

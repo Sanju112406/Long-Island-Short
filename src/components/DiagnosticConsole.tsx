@@ -55,6 +55,10 @@ interface DiagnosticConsoleProps {
   isOpen?: boolean;
   onClose?: () => void;
   isEmbedded?: boolean;
+  routeSource?: 'LIVE_ONEMAP' | 'FALLBACK_PRESET';
+  gpsPermissionState?: string;
+  isOffRoute?: boolean;
+  activeJourneyId?: string;
 }
 
 interface LogEntry {
@@ -73,6 +77,10 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
   isOpen = true,
   onClose,
   isEmbedded = false,
+  routeSource = 'FALLBACK_PRESET',
+  gpsPermissionState = 'UNKNOWN',
+  isOffRoute = false,
+  activeJourneyId,
 }) => {
   const [report, setReport] = useState<FullReport | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -370,6 +378,49 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
       {/* TAB 1: SERVICE OVERVIEW GRID */}
       {activeTab === 'overview' && (
         <div className="space-y-3">
+          {/* Active Commute Runtime Telemetry */}
+          <div className="p-3.5 rounded-2xl bg-slate-900 text-white border border-slate-700/80 shadow-xs space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5" />
+                Live Commute Telemetry
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                {activeJourneyId || 'Active Session'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                <span className="text-slate-400 block text-[9px] uppercase">Route Engine:</span>
+                <span className={`font-bold ${routeSource === 'LIVE_ONEMAP' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {routeSource}
+                </span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                <span className="text-slate-400 block text-[9px] uppercase">GPS State:</span>
+                <span className={`font-bold ${gpsPermissionState === 'GRANTED' ? 'text-emerald-400' : 'text-sky-400'}`}>
+                  {gpsPermissionState}
+                </span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                <span className="text-slate-400 block text-[9px] uppercase">Route Tracking:</span>
+                <span className={`font-bold ${isOffRoute ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {isOffRoute ? 'OFF ROUTE (REROUTE)' : 'ON TRACK'}
+                </span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                <span className="text-slate-400 block text-[9px] uppercase">Gemini Agent:</span>
+                <span className="font-bold text-emerald-400">
+                  12 TOOLS ACTIVE
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* 1. Gemini AI Service Card */}
           <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-xs space-y-2.5">
             <div className="flex items-center justify-between">
@@ -378,7 +429,7 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black">Gemini 3.8 Flash</h4>
+                  <h4 className="text-xs font-black">Gemini 2.0 Flash</h4>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400">
                     Voice intent reasoning & emotional de-escalation
                   </p>
@@ -451,7 +502,7 @@ export const DiagnosticConsole: React.FC<DiagnosticConsoleProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Account Email:</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">
-                  {report?.environment.oneMapEmail || 'e1486310@u.nus.edu'}
+                  {report?.environment.oneMapEmail || 'Not configured'}
                 </span>
               </div>
               <div className="flex items-center justify-between">

@@ -240,7 +240,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   OneMap Singapore (GovTech / SLA)
                 </span>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Account: <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">e1486310@u.nus.edu</span>
+                  Authentication: <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">Configured in .env</span>
                 </p>
                 <p className="text-[10px] text-slate-400">
                   Authenticated via Email + Password grant (no API key required)

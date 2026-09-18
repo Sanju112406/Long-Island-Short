@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Bus, Train, AlertCircle, CheckCircle2, ShieldCheck, Users, Accessibility, ArrowUpRight } from 'lucide-react';
 
+import { TransportType } from '../types';
+
 interface LiveTransitTelemetryProps {
-  stepType: 'walk' | 'bus' | 'mrt' | 'transfer';
+  stepType: TransportType;
   persona?: 'rachel' | 'arjun' | 'lim' | 'default';
   isPowerSaving?: boolean;
 }

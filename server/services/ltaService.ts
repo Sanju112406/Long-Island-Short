@@ -18,7 +18,7 @@ export interface LTATrainAlert {
     content: string;
     createdDate: string;
   }>;
-  source: 'live_lta' | 'cached_lta_feed';
+  source: 'LIVE_LTA' | 'FALLBACK_SIMULATION' | 'live_lta' | 'cached_lta_feed';
 }
 
 export interface StationCrowdData {
@@ -48,7 +48,7 @@ export interface LTABusArrivalInfo {
       loadDescription: string;
     };
   }>;
-  source: 'live_lta' | 'cached_feed';
+  source: 'LIVE_LTA' | 'FALLBACK_SIMULATION' | 'live_lta' | 'cached_feed';
 }
 
 export interface LTAFacilityMaintenance {
@@ -85,7 +85,7 @@ const FALLBACK_ALERTS: LTATrainAlert = {
       createdDate: new Date().toISOString(),
     },
   ],
-  source: 'cached_lta_feed',
+  source: 'FALLBACK_SIMULATION',
 };
 
 const STATION_CROWD_LOOKUP: Record<string, 'l' | 'm' | 'h'> = {
@@ -101,7 +101,7 @@ const STATION_CROWD_LOOKUP: Record<string, 'l' | 'm' | 'h'> = {
 };
 
 export async function fetchTrainServiceAlerts(apiKey?: string): Promise<LTATrainAlert> {
-  const key = apiKey || process.env.LTA_ACCOUNT_KEY;
+  const key = apiKey || process.env.LTA_ACCOUNT_KEY || process.env.LTA_DATAMALL_API_KEY;
 
   if (key) {
     try {
@@ -133,7 +133,7 @@ export async function fetchTrainServiceAlerts(apiKey?: string): Promise<LTATrain
             content: msg.Content,
             createdDate: msg.CreatedDate,
           })),
-          source: 'live_lta',
+          source: 'LIVE_LTA',
         };
       }
     } catch (err) {
@@ -206,7 +206,7 @@ export async function fetchBusArrivals(busStopCode: string): Promise<LTABusArriv
         return {
           busStopCode,
           services,
-          source: 'live_lta',
+          source: 'LIVE_LTA',
         };
       }
     } catch (err) {
@@ -255,7 +255,7 @@ export async function fetchBusArrivals(busStopCode: string): Promise<LTABusArriv
         },
       },
     ],
-    source: 'cached_feed',
+    source: 'FALLBACK_SIMULATION',
   };
 }
 

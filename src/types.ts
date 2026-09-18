@@ -1,6 +1,13 @@
 export type FamiliarityLevel = 'full' | 'medium' | 'light';
 
-export type TransportType = 'walk' | 'bus' | 'mrt' | 'transfer';
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+export type TransportType = 'walk' | 'bus' | 'mrt' | 'transfer' | 'cycle';
+
+export type RouteSource = 'LIVE_ONEMAP' | 'FALLBACK_PRESET';
 
 export interface JourneyStep {
   id: string;
@@ -11,6 +18,9 @@ export interface JourneyStep {
   lineColor?: string; // Tailwind color class or hex
   stopsCount?: number;
   durationMins: number;
+  distanceMeters?: number;
+  boardingStop?: string;
+  alightingStop?: string;
   landmark: string;
   landmarkDetail: string;
   landmarkIconName?: 'store' | 'coffee' | 'landmark' | 'building' | 'crosswalk' | 'train' | 'bus';
@@ -22,6 +32,7 @@ export interface JourneyStep {
   reassuranceCue?: string;
   isCompleted?: boolean;
   isActive?: boolean;
+  geometry?: [number, number][];
 }
 
 export interface Journey {
@@ -34,6 +45,47 @@ export interface Journey {
   totalDurationMins: number;
   travelHistoryCount: number;
   steps: JourneyStep[];
+  routeSource?: RouteSource;
+  totalDistanceMeters?: number;
+  geometry?: [number, number][];
+  legs?: JourneyStep[];
+  originCoords?: { lat: number; lng: number };
+  destinationCoords?: { lat: number; lng: number };
+}
+
+export type GPSPermissionState = 'UNKNOWN' | 'REQUESTING' | 'GRANTED' | 'DENIED' | 'UNAVAILABLE';
+
+export interface UserLocation {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  heading?: number | null;
+  speed?: number | null;
+  timestamp: number;
+  isSimulated?: boolean;
+}
+
+export interface OffRouteDetectionResult {
+  offRoute: boolean;
+  distanceFromRouteMeters: number;
+  confidence: number;
+  reason?: string;
+  nearestStepIndex?: number;
+  consecutiveDeviations?: number;
+  suggestedAction?: string;
+}
+
+export interface JourneyImpactAssessment {
+  affectsJourney: boolean;
+  actionRequired: boolean;
+  severity: 'none' | 'low' | 'moderate' | 'high' | 'severe';
+  reason: string;
+  currentETA: string;
+  alternativeETA?: string;
+  minutesSaved?: number;
+  recommendedAction: 'CONTINUE' | 'MONITOR' | 'REROUTE' | 'ALIGHT_NOW';
+  affectedLegIds: string[];
+  disruptionSummary?: string;
 }
 
 export interface CompanionMessage {

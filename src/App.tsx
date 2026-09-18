@@ -12,6 +12,9 @@ import {
   DisruptionAlert,
   MissedStopState,
   SharedETAState,
+  UserLocation,
+  GPSPermissionState,
+  LatLng,
 } from './types';
 import {
   DEFAULT_JOURNEY,
@@ -20,6 +23,8 @@ import {
   PRESET_JOURNEYS,
 } from './data/singaporeRoutes';
 import { speechService } from './services/speechService';
+import { geolocationService } from './services/geolocationService';
+import { journeyMonitor } from './services/journeyMonitor';
 import { JourneyHeader } from './components/JourneyHeader';
 import { CompanionVoiceOrb } from './components/CompanionVoiceOrb';
 import { ActiveStepCard } from './components/ActiveStepCard';
@@ -67,6 +72,11 @@ export default function App() {
 
   // Active commuter persona (Rachel / Arjun / Mdm Lim / Default)
   const [persona, setPersona] = useState<'rachel' | 'arjun' | 'lim' | 'default'>('default');
+
+  // Real Geolocation & Off-Route states
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [gpsState, setGpsState] = useState<GPSPermissionState>('UNKNOWN');
+  const [isOffRoute, setIsOffRoute] = useState<boolean>(false);
 
   // Modals & drawers
   const [isVoiceDrawerOpen, setIsVoiceDrawerOpen] = useState<boolean>(false);
@@ -155,6 +165,102 @@ export default function App() {
       isArrived,
     }));
   }, [currentStepIndex, journey, missedStopState.isMissed, disruption.active]);
+
+  // Restore saved session on initial mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('eyesup_session_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.journey) setJourney(parsed.journey);
+        if (typeof parsed.currentStepIndex === 'number') setCurrentStepIndex(parsed.currentStepIndex);
+        if (parsed.familiarity) setFamiliarity(parsed.familiarity);
+        if (parsed.persona) setPersona(parsed.persona);
+        if (typeof parsed.isPowerSaving === 'boolean') setIsPowerSaving(parsed.isPowerSaving);
+      }
+    } catch (e) {
+      console.warn('Could not restore local session:', e);
+    }
+  }, []);
+
+  // Persist session changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'eyesup_session_state',
+        JSON.stringify({
+          journey,
+          currentStepIndex,
+          familiarity,
+          persona,
+          isPowerSaving,
+        })
+      );
+    } catch (e) {
+      // Storage quota or private browsing
+    }
+  }, [journey, currentStepIndex, familiarity, persona, isPowerSaving]);
+
+  // Geolocation tracking & state management
+  useEffect(() => {
+    geolocationService.startTracking();
+    const unsubLoc = geolocationService.onLocationChange((loc) => {
+      setUserLocation(loc);
+    });
+    const unsubState = geolocationService.onStateChange((state) => {
+      setGpsState(state);
+    });
+
+    return () => {
+      unsubLoc();
+      unsubState();
+      geolocationService.stopTracking();
+    };
+  }, []);
+
+  // Proactive Agentic Monitoring Loop
+  useEffect(() => {
+    if (activeTab === 'travel' && !isArrivalComplete) {
+      journeyMonitor.start({
+        journey,
+        currentStepIndex,
+        getCurrentLocation: () => userLocation,
+        familiarityMode: familiarity,
+        userPersona: persona,
+        isPowerSaving,
+        onProactiveGuidance: (speechText) => {
+          speakText(speechText);
+          const alertMsg: CompanionMessage = {
+            id: `proactive-${Date.now()}`,
+            sender: 'companion',
+            text: speechText,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            source: 'system',
+          };
+          setMessages((prev) => [...prev, alertMsg]);
+        },
+        onImpactDetected: (assessment) => {
+          if (assessment.recommendedAction === 'REROUTE') {
+            setDisruption((prev) => ({
+              ...prev,
+              active: true,
+              description: assessment.reason,
+            }));
+          }
+        },
+        onOffRouteDetected: () => {
+          setIsOffRoute(true);
+          handleRecalculateOffRoute();
+        },
+      });
+    } else {
+      journeyMonitor.stop();
+    }
+
+    return () => {
+      journeyMonitor.stop();
+    };
+  }, [journey, currentStepIndex, activeTab, isArrivalComplete, familiarity, persona, isPowerSaving, userLocation]);
 
   // Handle Speech Recognition setup
   useEffect(() => {
@@ -349,7 +455,7 @@ export default function App() {
     }
   };
 
-  const handleStartPlannedJourney = (
+  const handleStartPlannedJourney = async (
     routeKey: string,
     origin: string,
     destination: string,
@@ -358,26 +464,48 @@ export default function App() {
     const match = PRESET_JOURNEYS.find(
       (r) =>
         r.id === routeKey ||
-        r.title.toLowerCase().includes(destination.toLowerCase()) ||
-        r.destination.toLowerCase().includes(destination.toLowerCase())
+        (destination && r.destination.toLowerCase().includes(destination.toLowerCase()))
     );
 
-    if (match) {
+    if (match && (!origin || origin === match.origin)) {
       setJourney(match);
       setHistoryCount(match.travelHistoryCount);
       if (match.travelHistoryCount === 0) setFamiliarity('full');
       else if (match.travelHistoryCount < 8) setFamiliarity('medium');
       else setFamiliarity('light');
     } else {
-      setJourney({
-        ...DEFAULT_JOURNEY,
-        id: `custom-${Date.now()}`,
-        title: `${origin} to ${destination}`,
-        origin,
-        destination,
-        desiredArrivalTime: arrivalTime || '9:30 AM',
-      });
-      setFamiliarity('full');
+      // Dynamic Singapore Route Planning
+      try {
+        const res = await fetch('/api/journey/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origin: origin || 'Toa Payoh MRT',
+            destination: destination || 'Bugis Junction',
+            desiredArrivalTime: arrivalTime || '9:30 AM',
+            currentLocation: userLocation,
+          }),
+        });
+
+        if (res.ok) {
+          const dynamicJourney: Journey = await res.json();
+          setJourney(dynamicJourney);
+          setFamiliarity('full');
+        } else {
+          throw new Error('Dynamic routing failed');
+        }
+      } catch (err) {
+        console.warn('Fallback to standard journey:', err);
+        setJourney({
+          ...DEFAULT_JOURNEY,
+          id: `custom-${Date.now()}`,
+          title: `${origin} to ${destination}`,
+          origin,
+          destination,
+          desiredArrivalTime: arrivalTime || '9:30 AM',
+        });
+        setFamiliarity('full');
+      }
     }
 
     // Automatically align persona with chosen scenario
@@ -391,8 +519,56 @@ export default function App() {
 
     setCurrentStepIndex(0);
     setIsArrivalComplete(false);
+    setIsOffRoute(false);
     setActiveTab('travel');
     speakText(`Journey planned to ${destination}. Look up — I'm traveling alongside you.`);
+  };
+
+  // Recalculate route upon genuine divergence
+  const handleRecalculateOffRoute = async (divergentCoords?: LatLng) => {
+    const loc =
+      divergentCoords ||
+      (userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : { lat: 1.309, lng: 103.835 });
+
+    try {
+      const res = await fetch('/api/journey/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentLocation: loc,
+          destination: journey.destination,
+        }),
+      });
+
+      if (res.ok) {
+        const recalculated: Journey = await res.json();
+        setJourney(recalculated);
+        setCurrentStepIndex(0);
+        setIsOffRoute(true);
+        speakText(
+          `I noticed you're taking an alternative route. Don't worry at all—I've recalculated your quickest connection to ${journey.destination}.`
+        );
+      }
+    } catch (e) {
+      console.warn('Off-route recalculation error:', e);
+    }
+  };
+
+  // Simulate off-route divergence for judges
+  const handleTriggerOffRoute = () => {
+    const baseLat = activeStep?.geometry?.[0]?.[0] || journey.originCoords?.lat || 1.304;
+    const baseLng = activeStep?.geometry?.[0]?.[1] || journey.originCoords?.lng || 103.8318;
+    const simCoords = { lat: baseLat + 0.0028, lng: baseLng + 0.0028 };
+
+    geolocationService.setSimulatedLocation(simCoords);
+    setUserLocation({
+      lat: simCoords.lat,
+      lng: simCoords.lng,
+      accuracy: 10,
+      timestamp: Date.now(),
+      isSimulated: true,
+    });
+    handleRecalculateOffRoute(simCoords);
   };
 
   const handlePrevStep = () => {
@@ -442,6 +618,8 @@ export default function App() {
   const handleResetScenarios = () => {
     setMissedStopState((prev) => ({ ...prev, isMissed: false }));
     setDisruption((prev) => ({ ...prev, active: false }));
+    setIsOffRoute(false);
+    geolocationService.setSimulatedLocation(null);
     setJourney(DEFAULT_JOURNEY);
     setCurrentStepIndex(0);
     speakText("Journey reset to standard route from Toa Payoh to Bugis Junction.");
@@ -601,6 +779,12 @@ export default function App() {
                   <OpenStreetMapViewer
                     steps={journey.steps}
                     currentStepIndex={currentStepIndex}
+                    routeGeometry={journey.geometry}
+                    userLocation={userLocation}
+                    originCoords={journey.originCoords}
+                    destinationCoords={journey.destinationCoords}
+                    originName={journey.origin}
+                    destinationName={journey.destination}
                     isDisrupted={disruption.active}
                     alternativeRouteActive={journey.title.includes('Bypass')}
                   />
@@ -622,13 +806,15 @@ export default function App() {
                     isPowerSaving={isPowerSaving}
                   />
 
-                  {/* Interactive Simulation Controls for Missed Stop & Disruption */}
+                  {/* Interactive Simulation Controls for Missed Stop, Disruption & Off-Route */}
                   <SimulationBar
                     onTriggerMissedStop={handleTriggerMissedStop}
                     onTriggerDisruption={handleTriggerDisruption}
+                    onTriggerOffRoute={handleTriggerOffRoute}
                     onResetScenarios={handleResetScenarios}
                     isMissedStopActive={missedStopState.isMissed}
                     isDisruptionActive={disruption.active}
+                    isOffRouteActive={isOffRoute}
                     isPowerSaving={isPowerSaving}
                     activePersona={persona}
                     onSelectPersona={handleSelectPersona}
@@ -703,6 +889,10 @@ export default function App() {
         <DiagnosticConsole
           isOpen={isDiagnosticsOpen}
           onClose={() => setIsDiagnosticsOpen(false)}
+          routeSource={journey.routeSource}
+          gpsPermissionState={gpsState}
+          isOffRoute={isOffRoute}
+          activeJourneyId={journey.id}
         />
 
         <VoiceChatDrawer

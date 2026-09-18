@@ -84,8 +84,9 @@ export async function testGeminiConnectivity(): Promise<ServiceDiagnosticResult>
       },
     });
 
+    const targetModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: targetModel,
       contents: [
         {
           role: 'user',
@@ -107,10 +108,10 @@ export async function testGeminiConnectivity(): Promise<ServiceDiagnosticResult>
       status: 'connected',
       httpStatus: 200,
       latencyMs,
-      message: `Gemini 3.8 Flash responded successfully in ${latencyMs}ms.`,
+      message: `${targetModel} responded successfully in ${latencyMs}ms.`,
       timestamp: new Date().toISOString(),
       details: {
-        model: 'gemini-3.8-flash',
+        model: targetModel,
         keyMasked: maskKey(key),
         keyLength: key.length,
         responseSnippet: responseText,
