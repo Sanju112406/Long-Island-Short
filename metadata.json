@@ -1,0 +1,6 @@
+{
+  "name": "Eyes Up",
+  "description": "An eyes-up AI navigation companion for Singapore commuters, encouraging heads-up travel with landmark-based voice guidance, adaptive route familiarity, automatic disruption recovery, ETA sharing, and power optimization.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
