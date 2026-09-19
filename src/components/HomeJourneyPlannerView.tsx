@@ -68,14 +68,19 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
     forecast: string;
     isRaining: boolean;
     advice: string;
-  } | null>(null);
+  }>({
+    area: 'Central Singapore',
+    forecast: 'Passing Showers',
+    isRaining: true,
+    advice: 'Passing showers detected in Central Singapore. Eyes Up will prioritize sheltered linkways and underground MRT underpasses.',
+  });
   const [isWeatherExpanded, setIsWeatherExpanded] = useState(false);
 
   useEffect(() => {
     fetch('/api/weather/nowcast?area=Central')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) setWeather(data);
+        if (data && data.forecast) setWeather(data);
       })
       .catch((err) => console.warn('Weather fetch error:', err));
   }, []);

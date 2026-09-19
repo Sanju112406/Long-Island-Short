@@ -517,13 +517,17 @@ export default function App() {
       setCurrentStepIndex(nextIdx);
       speechService.playSubtleChime();
       const nextStep = journey.steps[nextIdx];
-      const text = nextStep.guidance[familiarity] || nextStep.guidance.full;
+      const text =
+        nextStep?.guidance?.[familiarity] ||
+        nextStep?.guidance?.full ||
+        nextStep?.title ||
+        'Proceed to next stop.';
       speakText(text);
 
       // Subtle Eyes Up Discovery prompt between stops
       if (nextIdx > 0 && nextIdx < journey.steps.length - 1) {
         setTimeout(() => {
-          const matchedMoment = findMomentForStep(nextStep, nextIdx, journey.title);
+          const matchedMoment = findMomentForStep(nextStep, nextIdx, journey.title || '');
           setActiveMoment(matchedMoment);
           setIsMomentCardOpen(true);
         }, 3000);
@@ -880,7 +884,7 @@ export default function App() {
                     originName={journey.origin}
                     destinationName={journey.destination}
                     isDisrupted={disruption.active}
-                    alternativeRouteActive={journey.title.includes('Bypass')}
+                    alternativeRouteActive={journey.title ? journey.title.includes('Bypass') : false}
                   />
 
                   {/* Simplified / Gamified Schematic Journey Map */}
