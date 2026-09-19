@@ -157,17 +157,17 @@ export default function App() {
     alternativeSteps: DISRUPTION_ALTERNATIVE_STEPS,
   });
 
-  // Share ETA state
-  const [sharedState, setSharedState] = useState<SharedETAState>({
-    recipientName: 'Mom',
-    recipientPhone: '+65 9123 4567',
+  // Share ETA state with persistent/stable shareId
+  const [sharedState, setSharedState] = useState<SharedETAState>(() => ({
+    shareId: 'singapore-ride',
+    recipientName: 'Friend',
     destination: DEFAULT_JOURNEY.destination,
     currentETA: DEFAULT_JOURNEY.calculatedETA,
     progressPercentage: 0,
     statusText: 'On schedule',
     lastUpdated: '6:02 PM',
     isArrived: false,
-  });
+  }));
 
   // Conversational history
   const [messages, setMessages] = useState<CompanionMessage[]>([
@@ -226,15 +226,26 @@ export default function App() {
       currentETA = computeLiveETA(Math.max(4, remainingMins - 4), liveDate);
     }
 
-    setSharedState((prev) => ({
-      ...prev,
-      destination: journey.destination,
-      currentETA,
-      progressPercentage: pct,
-      statusText,
-      lastUpdated: liveNowString,
-      isArrived,
-    }));
+    setSharedState((prev) => {
+      const updated: SharedETAState = {
+        ...prev,
+        destination: journey.destination || 'Destination',
+        currentETA,
+        progressPercentage: pct,
+        statusText,
+        lastUpdated: liveNowString,
+        isArrived,
+      };
+
+      // Sync with backend API so external viewers opening the link see live status
+      fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch(() => {});
+
+      return updated;
+    });
   }, [currentStepIndex, journey, missedStopState.isMissed, disruption.active, liveCalculatedETA, liveNowString, remainingMins, liveDate]);
 
   // Restore saved session on initial mount

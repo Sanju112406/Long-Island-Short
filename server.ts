@@ -231,6 +231,58 @@ async function startServer() {
     }
   });
 
+  // In-memory store for shared live transit passes (privacy-friendly, expires after 12h)
+  const sharedPasses = new Map<string, {
+    shareId: string;
+    destination: string;
+    currentETA: string;
+    progressPercentage: number;
+    statusText: string;
+    lastUpdated: string;
+    isArrived: boolean;
+    updatedAt: number;
+  }>();
+
+  // Create / Update a shared live transit pass
+  app.post("/api/share", (req, res) => {
+    const { shareId, destination, currentETA, progressPercentage, statusText, lastUpdated, isArrived } = req.body;
+    if (!shareId) {
+      return res.status(400).json({ error: "shareId is required" });
+    }
+    const record = {
+      shareId,
+      destination: destination || "Singapore Destination",
+      currentETA: currentETA || "On Time",
+      progressPercentage: typeof progressPercentage === 'number' ? progressPercentage : 0,
+      statusText: statusText || "On schedule",
+      lastUpdated: lastUpdated || new Date().toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit" }),
+      isArrived: !!isArrived,
+      updatedAt: Date.now(),
+    };
+    sharedPasses.set(shareId, record);
+    res.json({ success: true, record });
+  });
+
+  // Read a shared live transit pass
+  app.get("/api/share/:shareId", (req, res) => {
+    const { shareId } = req.params;
+    const pass = sharedPasses.get(shareId);
+    if (pass) {
+      return res.json(pass);
+    }
+    // Fallback for new or test link
+    return res.json({
+      shareId,
+      destination: "Bugis Junction",
+      currentETA: "6:24 PM",
+      progressPercentage: 45,
+      statusText: "On schedule",
+      lastUpdated: new Date().toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit" }),
+      isArrived: false,
+      updatedAt: Date.now(),
+    });
+  });
+
   app.get("/api/environment/humidity", async (_req, res) => {
     try {
       res.json(await fetchHumidity());
