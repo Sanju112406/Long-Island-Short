@@ -79,50 +79,66 @@ export const OpenStreetMapViewer: React.FC<OpenStreetMapViewerProps> = ({
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
+    if (mapInstanceRef.current) return;
 
-    // Initialize Map centered on Singapore Central
-    const map = L.map(mapContainerRef.current, {
-      center: [1.32, 103.81],
-      zoom: 13,
-      zoomControl: false,
-      attributionControl: true,
-    });
+    // Check if container already has a map attached by Leaflet
+    if ((mapContainerRef.current as any)._leaflet_id) {
+      delete (mapContainerRef.current as any)._leaflet_id;
+    }
 
-    // OpenStreetMap Standard Tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
-      maxZoom: 18,
-    }).addTo(map);
+    try {
+      // Initialize Map centered on Singapore Central
+      const map = L.map(mapContainerRef.current, {
+        center: [1.32, 103.81],
+        zoom: 13,
+        zoomControl: false,
+        attributionControl: true,
+      });
 
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+      // OpenStreetMap Standard Tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
+        maxZoom: 18,
+      }).addTo(map);
 
-    mapInstanceRef.current = map;
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // Load Singapore Rail Station Footprints
-    fetch('/data/AmendmenttoMP2014RailStation.geojson')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && mapInstanceRef.current) {
-          L.geoJSON(data, {
-            style: {
-              color: '#059669',
-              weight: 2,
-              fillColor: '#10b981',
-              fillOpacity: 0.25,
-            },
-            onEachFeature: (feature, layer) => {
-              if (feature.properties) {
-                const name = feature.properties.STN_NAME || feature.properties.NAME || 'MRT Station';
-                layer.bindPopup(`<b>${name}</b><br/>Footprint layer`);
-              }
-            },
-          }).addTo(mapInstanceRef.current);
-        }
-      })
-      .catch((err) => console.warn('Could not load rail station footprints geojson:', err));
+      mapInstanceRef.current = map;
+
+      // Load Singapore Rail Station Footprints
+      fetch('/data/AmendmenttoMP2014RailStation.geojson')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && mapInstanceRef.current) {
+            L.geoJSON(data, {
+              style: {
+                color: '#059669',
+                weight: 2,
+                fillColor: '#10b981',
+                fillOpacity: 0.25,
+              },
+              onEachFeature: (feature, layer) => {
+                if (feature.properties) {
+                  const name = feature.properties.STN_NAME || feature.properties.NAME || 'MRT Station';
+                  layer.bindPopup(`<b>${name}</b><br/>Footprint layer`);
+                }
+              },
+            }).addTo(mapInstanceRef.current);
+          }
+        })
+        .catch((err) => console.warn('Could not load rail station footprints geojson:', err));
+    } catch (err) {
+      console.warn('Map initialization error suppressed:', err);
+    }
 
     return () => {
-      map.remove();
+      try {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.remove();
+        }
+      } catch (err) {
+        console.warn('Map remove error:', err);
+      }
       mapInstanceRef.current = null;
     };
   }, []);

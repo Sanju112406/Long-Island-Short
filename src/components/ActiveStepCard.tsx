@@ -47,10 +47,14 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
   onTriggerMoment,
   isSpeaking = false,
 }) => {
-  const instructionText = step.guidance[familiarity] || step.guidance.full;
+  const instructionText =
+    step?.guidance?.[familiarity] ||
+    step?.guidance?.full ||
+    step?.title ||
+    'Proceed towards your next stop.';
 
   const getLandmarkIcon = () => {
-    switch (step.landmarkIconName) {
+    switch (step?.landmarkIconName) {
       case 'store':
         return <Store className="w-4 h-4 text-red-600 dark:text-red-400" />;
       case 'coffee':
@@ -63,7 +67,7 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
   };
 
   const getTransportIcon = () => {
-    switch (step.type) {
+    switch (step?.type) {
       case 'bus':
         return <Bus className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'mrt':

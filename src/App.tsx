@@ -183,11 +183,27 @@ export default function App() {
   const { timeString: liveNowString, date: liveDate } = useLiveClock(1000);
 
   // Dynamic live remaining duration and ETA calculations
-  const remainingMins = computeRemainingMinutes(journey.steps, currentStepIndex);
+  const remainingMins = computeRemainingMinutes(journey.steps || [], currentStepIndex);
   const liveCalculatedETA = computeLiveETA(remainingMins, liveDate);
-  const liveDesiredArrival = journey.desiredArrivalTime || getDefaultLiveTargetTime(journey.totalDurationMins, 10);
+  const liveDesiredArrival = journey.desiredArrivalTime || getDefaultLiveTargetTime(journey.totalDurationMins || 25, 10);
 
-  const activeStep = journey.steps[currentStepIndex] || journey.steps[0];
+  const fallbackStep: JourneyStep = {
+    id: 'step-fallback-initial',
+    type: 'walk',
+    title: `Proceed towards ${journey.destination || 'Destination'}`,
+    durationMins: 4,
+    distanceMeters: 250,
+    landmark: 'Transit Concourse / Sheltered Linkway',
+    landmarkDetail: 'Follow signs towards station platforms',
+    guidance: {
+      full: `Proceed towards ${journey.destination || 'your destination'}. I am traveling alongside you.`,
+      medium: `Head towards ${journey.destination || 'destination'}.`,
+      light: 'Proceed on route.',
+    },
+    reassuranceCue: 'On track along your journey.',
+  };
+
+  const activeStep = (journey.steps && journey.steps[currentStepIndex]) || (journey.steps && journey.steps[0]) || fallbackStep;
   const recognitionRef = useRef<any>(null);
 
   // Keep shared state synchronized with journey changes and live clock
@@ -523,7 +539,25 @@ export default function App() {
   };
 
   const handleStartPlannedJourney = (selectedJourney: Journey) => {
-    setJourney(selectedJourney);
+    if (!selectedJourney) return;
+
+    const validSteps =
+      selectedJourney.steps && Array.isArray(selectedJourney.steps) && selectedJourney.steps.length > 0
+        ? selectedJourney.steps
+        : (selectedJourney as any).legs && Array.isArray((selectedJourney as any).legs) && (selectedJourney as any).legs.length > 0
+        ? (selectedJourney as any).legs
+        : DEFAULT_JOURNEY.steps;
+
+    const normalizedJourney: Journey = {
+      ...selectedJourney,
+      steps: validSteps,
+      origin: selectedJourney.origin || 'Current Location',
+      destination: selectedJourney.destination || 'Destination',
+      totalDurationMins: selectedJourney.totalDurationMins || 25,
+      calculatedETA: selectedJourney.calculatedETA || computeLiveETA(25, liveDate),
+    };
+
+    setJourney(normalizedJourney);
     setHistoryCount(selectedJourney.travelHistoryCount || 0);
     const calculatedFamiliarity =
       (selectedJourney.travelHistoryCount || 0) === 0
@@ -536,7 +570,7 @@ export default function App() {
     setIsArrivalComplete(false);
     setIsOffRoute(false);
     setActiveTab('travel');
-    speakText(`Journey started to ${selectedJourney.destination}. Look up — I'm traveling alongside you.`);
+    speakText(`Journey started to ${normalizedJourney.destination}. Look up — I'm traveling alongside you.`);
   };
 
   // Recalculate route upon genuine divergence
