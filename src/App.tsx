@@ -39,6 +39,7 @@ import { SimplifiedJourneyMap } from './components/SimplifiedJourneyMap';
 import { FamiliaritySelector } from './components/FamiliaritySelector';
 import { DisruptionBanner } from './components/DisruptionBanner';
 import { MissedStopBanner } from './components/MissedStopBanner';
+import { OffRouteBanner } from './components/OffRouteBanner';
 import { SimulationBar } from './components/SimulationBar';
 import { AccessibleSideTrigger } from './components/AccessibleSideTrigger';
 import { VoiceChatDrawer } from './components/VoiceChatDrawer';
@@ -605,6 +606,10 @@ export default function App() {
 
   // Simulate off-route divergence for judges
   const handleTriggerOffRoute = () => {
+    setIsOffRoute(true);
+    setMissedStopState((prev) => ({ ...prev, isMissed: false }));
+    setDisruption((prev) => ({ ...prev, active: false }));
+
     const baseLat = activeStep?.geometry?.[0]?.[0] || journey.originCoords?.lat || 1.304;
     const baseLng = activeStep?.geometry?.[0]?.[1] || journey.originCoords?.lng || 103.8318;
     const simCoords = { lat: baseLat + 0.0028, lng: baseLng + 0.0028 };
@@ -617,6 +622,18 @@ export default function App() {
       timestamp: Date.now(),
       isSimulated: true,
     });
+
+    const promptText = `I noticed you're taking an alternative route. Don't worry at all—I've recalculated your quickest connection to ${journey.destination}.`;
+    const alertMsg: CompanionMessage = {
+      id: `offroute-${Date.now()}`,
+      sender: 'companion',
+      text: promptText,
+      timestamp: liveNowString,
+      source: 'system',
+    };
+    setMessages((prev) => [...prev, alertMsg]);
+    speakText(promptText);
+
     handleRecalculateOffRoute(simCoords);
   };
 
@@ -819,6 +836,19 @@ export default function App() {
                   <MissedStopBanner
                     missedState={missedStopState}
                     onSpeakExplanation={() => speakText(missedStopState.aiExplanation)}
+                    onResetRoute={handleResetScenarios}
+                    isSpeaking={isSpeaking}
+                  />
+
+                  {/* Off-Route Divergence Recovery Banner */}
+                  <OffRouteBanner
+                    isActive={isOffRoute}
+                    destination={journey.destination}
+                    onSpeakExplanation={() =>
+                      speakText(
+                        `I noticed you turned onto an alternative route. Don't worry at all—I've recalculated your quickest connection to ${journey.destination} with tangible landmark cues.`
+                      )
+                    }
                     onResetRoute={handleResetScenarios}
                     isSpeaking={isSpeaking}
                   />
