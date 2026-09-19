@@ -1,5 +1,6 @@
 import React from 'react';
-import { BatteryCharging, Mic, Volume2, ShieldAlert, SunMedium, Eye } from 'lucide-react';
+import { BatteryCharging, Mic, Volume2, ShieldAlert, SunMedium } from 'lucide-react';
+import { AppLogo } from './AppLogo';
 
 interface PowerSaverOverlayProps {
   isPowerSaving: boolean;
@@ -32,8 +33,8 @@ export const PowerSaverOverlay: React.FC<PowerSaverOverlayProps> = ({
       {/* Top minimal status */}
       <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-mono tracking-wider text-emerald-400 font-bold uppercase">
+          <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-xs font-mono tracking-wider text-red-400 font-bold uppercase">
             Eyes-Up OLED Pocket Mode
           </span>
         </div>
@@ -49,36 +50,42 @@ export const PowerSaverOverlay: React.FC<PowerSaverOverlayProps> = ({
         </button>
       </div>
 
-      {/* Main pocket-mode center area: Minimal high-contrast guidance & giant voice trigger */}
-      <div className="my-auto flex flex-col items-center text-center space-y-6">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-widest text-neutral-500">Next Action</p>
-          <h2 className="text-2xl font-bold tracking-tight text-white max-w-xs">
+      {/* Center large high-contrast guidance text */}
+      <div className="space-y-6 text-center my-auto">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-neutral-500 mb-2">
+            Target Destination
+          </p>
+          <h2 className="text-2xl font-bold tracking-tight text-neutral-100">
             {nextStepTitle}
           </h2>
-          <p className="text-sm text-amber-400 font-mono mt-1">
-            📍 {landmark}
+        </div>
+
+        {/* Next critical landmark */}
+        <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 max-w-xs mx-auto">
+          <p className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-1">
+            Approaching Landmark
           </p>
+          <p className="text-base font-bold text-neutral-200">
+            {landmark}
+          </p>
+          <div className="mt-2 text-xs font-mono text-neutral-400">
+            ETA: <span className="text-neutral-100 font-bold">{eta}</span>
+          </div>
         </div>
 
-        {/* ETA badge */}
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 text-sm font-mono text-emerald-400">
-          <span>ETA {eta}</span>
-          <span>•</span>
-          <span>Battery Saver Active</span>
-        </div>
-
-        {/* Giant full-screen accessible thumb trigger */}
+        {/* Single giant Tap-to-Ask button */}
         <button
-          id="pocket-mode-voice-trigger"
+          id="power-saver-mic-button"
           type="button"
           onClick={onTapVoice}
-          className={`w-32 h-32 rounded-full flex flex-col items-center justify-center border-4 transition-transform active:scale-95 cursor-pointer shadow-2xl ${
+          aria-label="Tap to speak to Eyes Up"
+          className={`w-36 h-36 mx-auto rounded-full border-2 flex flex-col items-center justify-center transition-all cursor-pointer shadow-lg active:scale-95 ${
             isListening
-              ? 'bg-emerald-600 border-emerald-300 text-white animate-pulse'
+              ? 'bg-rose-700 border-rose-400 text-white animate-pulse scale-105'
               : isSpeaking
               ? 'bg-amber-600 border-amber-300 text-white'
-              : 'bg-neutral-900 border-neutral-700 text-emerald-400 hover:border-emerald-500'
+              : 'bg-neutral-900 border-neutral-700 text-red-400 hover:border-red-500'
           }`}
         >
           {isListening ? (
@@ -93,15 +100,15 @@ export const PowerSaverOverlay: React.FC<PowerSaverOverlayProps> = ({
           )}
         </button>
 
-        <p className="text-xs text-neutral-500 max-w-xs leading-relaxed">
+        <p className="text-xs text-neutral-500 max-w-xs leading-relaxed mx-auto">
           Screen dimmed for OLED efficiency. Put phone in pocket — Eyes Up will speak when milestones approach.
         </p>
       </div>
 
       {/* Bottom bar */}
       <div className="border-t border-neutral-900 pt-3 flex items-center justify-between text-[11px] text-neutral-500 font-mono">
-        <span className="flex items-center gap-1">
-          <Eye className="w-3.5 h-3.5 text-neutral-400" />
+        <span className="flex items-center gap-1.5">
+          <AppLogo size={16} />
           Eyes on Surroundings
         </span>
         <span>Audio Guidance Ready</span>

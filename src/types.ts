@@ -35,6 +35,22 @@ export interface JourneyStep {
   geometry?: [number, number][];
 }
 
+export interface RendezvousInfo {
+  meetingStation: string;
+  meetingStationCode?: string;
+  meetingPlatformOrExit?: string;
+  primaryOrigin: string;
+  secondaryOrigin: string;
+  destination: string;
+  primaryDurationToHubMins: number;
+  secondaryDurationToHubMins: number;
+  primaryDepartureTime: string;
+  secondaryDepartureTime: string;
+  rendezvousTime: string;
+  jointDurationToDestMins: number;
+  summary: string;
+}
+
 export interface Journey {
   id: string;
   title: string;
@@ -51,6 +67,21 @@ export interface Journey {
   legs?: JourneyStep[];
   originCoords?: { lat: number; lng: number };
   destinationCoords?: { lat: number; lng: number };
+  viaStops?: string[];
+  rendezvousInfo?: RendezvousInfo;
+}
+
+export interface RouteOption {
+  id: string;
+  tag: string;
+  tagType: 'recommended' | 'sheltered' | 'alternative';
+  durationMins: number;
+  calculatedETA: string;
+  transfersCount: number;
+  shelteredPercentage: number;
+  summary: string;
+  journey: Journey;
+  rendezvousInfo?: RendezvousInfo;
 }
 
 export type GPSPermissionState = 'UNKNOWN' | 'REQUESTING' | 'GRANTED' | 'DENIED' | 'UNAVAILABLE';

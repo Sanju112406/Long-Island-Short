@@ -1,6 +1,8 @@
 import React from 'react';
-import { Eye, BatteryCharging, Battery, Volume2, VolumeX, Share2, Compass, MapPin, Activity } from 'lucide-react';
+import { BatteryCharging, Battery, Volume2, VolumeX, Share2, Compass, MapPin, Activity, Clock } from 'lucide-react';
 import { FamiliarityLevel } from '../types';
+import { useLiveClock } from '../utils/timeUtils';
+import { AppLogo } from './AppLogo';
 
 interface JourneyHeaderProps {
   appName: string;
@@ -14,8 +16,6 @@ interface JourneyHeaderProps {
   onOpenDiagnostics?: () => void;
   origin: string;
   destination: string;
-  persona?: 'rachel' | 'arjun' | 'lim' | 'default';
-  onSelectPersona?: (persona: 'rachel' | 'arjun' | 'lim' | 'default') => void;
 }
 
 export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
@@ -30,9 +30,9 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
   onOpenDiagnostics,
   origin,
   destination,
-  persona = 'default',
-  onSelectPersona,
 }) => {
+  const { timeString } = useLiveClock(1000);
+
   return (
     <header
       id="eyes-up-main-header"
@@ -52,30 +52,17 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
             className="flex items-center gap-2 text-left cursor-pointer group"
             title="Click to plan or switch journey"
           >
-            <div className="w-8 h-8 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
-              <Eye className="w-4 h-4" />
+            <div className="group-hover:scale-105 transition-transform">
+              <AppLogo size={32} />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <h1 className="text-sm font-black tracking-tight leading-none text-slate-900 dark:text-white">
                   {appName}
                 </h1>
-                <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded-full uppercase">
+                <span className="text-[9px] bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 font-bold px-1.5 py-0.5 rounded-full uppercase">
                   SG
                 </span>
-                {persona !== 'default' && (
-                  <span
-                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full capitalize ${
-                      persona === 'rachel'
-                        ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                        : persona === 'arjun'
-                        ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300'
-                        : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                    }`}
-                  >
-                    {persona === 'lim' ? 'Mdm Lim' : persona}
-                  </span>
-                )}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-neutral-400 truncate max-w-[140px] mt-0.5">
                 {destination}
@@ -84,8 +71,21 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
           </button>
         </div>
 
-        {/* Action Controls */}
+        {/* Action Controls & Live Clock */}
         <div className="flex items-center gap-1.5">
+          {/* Live Clock Badge */}
+          <div
+            id="header-live-clock-badge"
+            className={`hidden xs:flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-mono font-bold border transition-colors ${
+              isPowerSaving
+                ? 'bg-neutral-900 border-neutral-800 text-red-400'
+                : 'bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+            }`}
+            title="Live Time"
+          >
+            <Clock className="w-3 h-3 text-red-500 animate-pulse shrink-0" />
+            <span>{timeString}</span>
+          </div>
           {/* Diagnostic Console Button */}
           {onOpenDiagnostics && (
             <button
@@ -96,7 +96,7 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
               title="API Health & Diagnostics"
               className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <Activity className="w-4 h-4 text-red-600 dark:text-red-400" />
             </button>
           )}
 
@@ -122,7 +122,7 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
             className={`p-2 rounded-xl transition-colors cursor-pointer ${
               isAudioMuted
                 ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'
-                : 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60'
+                : 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60'
             }`}
           >
             {isAudioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -137,12 +137,12 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
             title={isPowerSaving ? 'Power Saver On (tap to exit)' : 'Switch to Power Saver'}
             className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
               isPowerSaving
-                ? 'bg-neutral-800 text-emerald-400 border border-neutral-700'
+                ? 'bg-neutral-800 text-red-400 border border-neutral-700'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
             }`}
           >
             {isPowerSaving ? (
-              <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+              <BatteryCharging className="w-3.5 h-3.5 text-red-400" />
             ) : (
               <Battery className="w-3.5 h-3.5 text-slate-500" />
             )}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Journey } from '../types';
 import { PRESET_JOURNEYS } from '../data/singaporeRoutes';
 import { MapPin, Navigation, Clock, Sparkles, X, ArrowRight, Check } from 'lucide-react';
+import { getDefaultLiveTargetTime, computeLiveETA } from '../utils/timeUtils';
 
 interface JourneyPlannerModalProps {
   isOpen: boolean;
@@ -18,7 +19,7 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
 }) => {
   const [origin, setOrigin] = useState('Toa Payoh Central (Blk 177)');
   const [destination, setDestination] = useState('Bugis Junction / National Library');
-  const [desiredTime, setDesiredTime] = useState('6:30 PM');
+  const [desiredTime, setDesiredTime] = useState(() => getDefaultLiveTargetTime(30, 10));
 
   if (!isOpen) return null;
 
@@ -34,8 +35,8 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
       title: `${origin} to ${destination}`,
       origin,
       destination,
-      desiredArrivalTime: desiredTime || '6:30 PM',
-      calculatedETA: '6:12 PM',
+      desiredArrivalTime: desiredTime || getDefaultLiveTargetTime(base.totalDurationMins || 28, 10),
+      calculatedETA: computeLiveETA(base.totalDurationMins || 28),
       travelHistoryCount: 0,
     };
     onSelectJourney(customJourney);
@@ -54,7 +55,7 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+            <div className="p-2 rounded-xl bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
               <Navigation className="w-5 h-5" />
             </div>
             <div>
@@ -84,13 +85,13 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
                 Origin
               </label>
               <div className="relative">
-                <MapPin className="w-4 h-4 text-emerald-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <MapPin className="w-4 h-4 text-red-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={origin}
                   onChange={(e) => setOrigin(e.target.value)}
                   placeholder="e.g. Toa Payoh Central, Serangoon NEX..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                   required
                 />
               </div>
@@ -101,13 +102,13 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
                 Destination
               </label>
               <div className="relative">
-                <Navigation className="w-4 h-4 text-emerald-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Navigation className="w-4 h-4 text-red-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
                   placeholder="e.g. Bugis Junction, Orchard ION, Raffles Place..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                   required
                 />
               </div>
@@ -124,7 +125,7 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
                   value={desiredTime}
                   onChange={(e) => setDesiredTime(e.target.value)}
                   placeholder="e.g. 6:30 PM, 8:45 AM..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
                   required
                 />
               </div>
@@ -133,7 +134,7 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
             <button
               id="generate-journey-submit-button"
               type="submit"
-              className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-colors cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-colors cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
               <span>Generate Eyes-Up Companion Route</span>
@@ -161,7 +162,7 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
                     }}
                     className={`w-full p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
                       isSelected
-                        ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-500 text-slate-900 dark:text-white ring-2 ring-emerald-500/20'
+                        ? 'bg-red-50/80 dark:bg-red-950/40 border-red-500 text-slate-900 dark:text-white ring-2 ring-red-500/20'
                         : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-slate-300'
                     }`}
                   >
@@ -171,7 +172,7 @@ export const JourneyPlannerModal: React.FC<JourneyPlannerModalProps> = ({
                           {pj.title}
                         </h4>
                         {isSelected && (
-                          <span className="text-[9px] font-bold bg-emerald-600 text-white px-1.5 py-0.2 rounded-full">
+                          <span className="text-[9px] font-bold bg-red-600 text-white px-1.5 py-0.2 rounded-full">
                             ACTIVE
                           </span>
                         )}

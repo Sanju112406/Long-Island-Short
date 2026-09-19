@@ -26,8 +26,8 @@ export const CompanionVoiceOrb: React.FC<CompanionVoiceOrbProps> = ({
       <div className="relative flex items-center justify-center">
         {isListening && (
           <>
-            <div className="absolute w-28 h-28 rounded-full bg-emerald-500/20 animate-ping duration-1000 pointer-events-none" />
-            <div className="absolute w-24 h-24 rounded-full bg-emerald-500/30 animate-pulse pointer-events-none" />
+            <div className="absolute w-28 h-28 rounded-full bg-red-500/20 animate-ping duration-1000 pointer-events-none" />
+            <div className="absolute w-24 h-24 rounded-full bg-red-500/30 animate-pulse pointer-events-none" />
           </>
         )}
 
@@ -39,7 +39,7 @@ export const CompanionVoiceOrb: React.FC<CompanionVoiceOrbProps> = ({
         )}
 
         {isThinking && (
-          <div className="absolute w-24 h-24 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin pointer-events-none" />
+          <div className="absolute w-24 h-24 rounded-full border-2 border-red-400 border-t-transparent animate-spin pointer-events-none" />
         )}
 
         {/* Central interactive Orb button */}
@@ -51,14 +51,14 @@ export const CompanionVoiceOrb: React.FC<CompanionVoiceOrbProps> = ({
           className={`relative z-10 w-20 h-20 rounded-full flex flex-col items-center justify-center transition-all duration-300 shadow-lg cursor-pointer ${
             isPowerSaving
               ? isListening
-                ? 'bg-emerald-600 text-black border-2 border-emerald-300'
-                : 'bg-neutral-900 text-emerald-400 border border-neutral-700'
+                ? 'bg-red-600 text-white border-2 border-red-300'
+                : 'bg-neutral-900 text-red-400 border border-neutral-700'
               : isListening
-              ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 text-white scale-105 shadow-emerald-500/30'
+              ? 'bg-gradient-to-tr from-red-600 to-rose-500 text-white scale-105 shadow-red-500/30'
               : isSpeaking
               ? 'bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-amber-500/30'
               : isThinking
-              ? 'bg-slate-700 text-teal-300'
+              ? 'bg-slate-700 text-red-300'
               : 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-900/20 active:scale-95'
           }`}
         >
@@ -77,7 +77,7 @@ export const CompanionVoiceOrb: React.FC<CompanionVoiceOrbProps> = ({
             <Sparkles className="w-7 h-7 animate-spin" />
           ) : (
             <div className="flex flex-col items-center justify-center">
-              <Mic className="w-7 h-7 text-emerald-400" />
+              <Mic className="w-7 h-7 text-red-400" />
             </div>
           )}
         </button>

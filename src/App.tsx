@@ -22,6 +22,13 @@ import {
   DISRUPTION_ALTERNATIVE_STEPS,
   PRESET_JOURNEYS,
 } from './data/singaporeRoutes';
+import {
+  useLiveClock,
+  computeLiveETA,
+  computeRemainingMinutes,
+  getDefaultLiveTargetTime,
+  formatLiveTime,
+} from './utils/timeUtils';
 import { speechService } from './services/speechService';
 import { geolocationService } from './services/geolocationService';
 import { journeyMonitor } from './services/journeyMonitor';
@@ -48,15 +55,6 @@ import { DiagnosticConsole } from './components/DiagnosticConsole';
 import { BottomNavBar, NavTab } from './components/BottomNavBar';
 import { MessageSquare, Sparkles, CheckCircle2, Navigation } from 'lucide-react';
 
-// A short, URL-safe id for a real shareable ETA link (persisted in localStorage
-// per session so refreshing doesn't invalidate a link already sent to a friend).
-function generateShareId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().slice(0, 8);
-  }
-  return Math.random().toString(36).slice(2, 10);
-}
-
 export default function App() {
   // Navigation tab state matching architecture diagram Section 4.
   // Starts on the planner, not Travel — Travel shows `journey` state, which is
@@ -82,9 +80,6 @@ export default function App() {
   // Power saver mode (OLED true black)
   const [isPowerSaving, setIsPowerSaving] = useState<boolean>(false);
 
-  // Active commuter persona (Rachel / Arjun / Mdm Lim / Default)
-  const [persona, setPersona] = useState<'rachel' | 'arjun' | 'lim' | 'default'>('default');
-
   // Real Geolocation & Off-Route states
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [gpsState, setGpsState] = useState<GPSPermissionState>('UNKNOWN');
@@ -100,39 +95,45 @@ export default function App() {
   const [missedStopState, setMissedStopState] = useState<MissedStopState>({
     isMissed: false,
     missedStopName: 'Middle Road / Bugis Junction (Stop 01112)',
-    nextStopName: 'North Bridge Road (Stop 01059)',
-    recoveryBus: '65',
-    originalETA: '6:10 PM',
+    missedStepIndex: 1,
+    recoveryOption: 'Take Bus 65 from opposite bus stop',
     newETA: '6:17 PM',
-    recoverySteps: MISSED_STOP_RECOVERY_STEPS,
-    aiExplanation:
-      "You've gone one stop past where we planned to get off. That's okay — I've adjusted the journey. Stay at this stop and take Bus 65. Your new ETA is 6:17 PM.",
   });
 
   // Disruption state
-  const [disruption, setDisruption] = useState<DisruptionAlert>({
-    id: 'dtl-delay-1',
+  const [disruption, setDisruption] = useState<{
+    active: boolean;
+    title: string;
+    description: string;
+    affectedStation: string;
+    affectedLine: string;
+    delayMinutes: number;
+    currentRouteETA: string;
+    alternativeRouteETA: string;
+    alternativeSteps: JourneyStep[];
+  }>({
     active: false,
-    title: 'Downtown Line Signal Delay near Bugis',
+    title: 'Downtown Line Delay near Bugis',
+    description: 'Track fault between Rochor and Bugis. Free regular bus services available.',
+    affectedStation: 'Bugis MRT (DT14)',
     affectedLine: 'Downtown Line',
-    description: 'Track fault near Bugis station causing 18-minute transit bottleneck.',
+    delayMinutes: 18,
     currentRouteETA: '9:07 AM',
     alternativeRouteETA: '8:49 AM',
-    alternativeLine: 'North East Line (NEL)',
     alternativeSteps: DISRUPTION_ALTERNATIVE_STEPS,
   });
 
-  // ETA sharing state
-  const [sharedState, setSharedState] = useState<SharedETAState>(() => ({
-    shareId: generateShareId(),
+  // Share ETA state
+  const [sharedState, setSharedState] = useState<SharedETAState>({
     recipientName: 'Mom',
+    recipientPhone: '+65 9123 4567',
     destination: DEFAULT_JOURNEY.destination,
     currentETA: DEFAULT_JOURNEY.calculatedETA,
     progressPercentage: 0,
     statusText: 'On schedule',
-    lastUpdated: 'Just now',
+    lastUpdated: '6:02 PM',
     isArrived: false,
-  }));
+  });
 
   // Conversational history
   const [messages, setMessages] = useState<CompanionMessage[]>([
@@ -145,26 +146,34 @@ export default function App() {
     },
   ]);
 
+  // Live real-time clock ticking every 1000ms
+  const { timeString: liveNowString, date: liveDate } = useLiveClock(1000);
+
+  // Dynamic live remaining duration and ETA calculations
+  const remainingMins = computeRemainingMinutes(journey.steps, currentStepIndex);
+  const liveCalculatedETA = computeLiveETA(remainingMins, liveDate);
+  const liveDesiredArrival = journey.desiredArrivalTime || getDefaultLiveTargetTime(journey.totalDurationMins, 10);
+
   const activeStep = journey.steps[currentStepIndex] || journey.steps[0];
   const recognitionRef = useRef<any>(null);
 
-  // Keep shared state synchronized with journey changes
+  // Keep shared state synchronized with journey changes and live clock
   useEffect(() => {
     const total = journey.steps.length;
     const pct = total > 1 ? Math.min(100, Math.round((currentStepIndex / (total - 1)) * 100)) : 0;
     const isArrived = currentStepIndex >= total - 1;
 
     let statusText: SharedETAState['statusText'] = 'On schedule';
-    let currentETA = journey.calculatedETA;
+    let currentETA = liveCalculatedETA;
 
     if (isArrived) {
       statusText = 'Arrived safely';
     } else if (missedStopState.isMissed) {
       statusText = 'Slight delay (+7 min)';
-      currentETA = missedStopState.newETA;
+      currentETA = computeLiveETA(remainingMins + 7, liveDate);
     } else if (disruption.active) {
       statusText = 'Alternative route taken';
-      currentETA = disruption.alternativeRouteETA;
+      currentETA = computeLiveETA(Math.max(4, remainingMins - 4), liveDate);
     }
 
     setSharedState((prev) => ({
@@ -173,28 +182,10 @@ export default function App() {
       currentETA,
       progressPercentage: pct,
       statusText,
-      lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      lastUpdated: liveNowString,
       isArrived,
     }));
-
-    // Refine the generic "On schedule" into a genuine comparison against the
-    // commuter's actual desired arrival time, once it's not already a more
-    // specific state (arrived / missed stop / disruption reroute).
-    if (!isArrived && !missedStopState.isMissed && !disruption.active && journey.desiredArrivalTime) {
-      const params = new URLSearchParams({
-        desiredArrivalTime: journey.desiredArrivalTime,
-        calculatedETA: currentETA,
-      });
-      fetch(`/api/journey/arrival-status?${params}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data?.statusText) {
-            setSharedState((prev) => ({ ...prev, statusText: data.statusText }));
-          }
-        })
-        .catch(() => {});
-    }
-  }, [currentStepIndex, journey, missedStopState.isMissed, disruption.active]);
+  }, [currentStepIndex, journey, missedStopState.isMissed, disruption.active, liveCalculatedETA, liveNowString, remainingMins, liveDate]);
 
   // Restore saved session on initial mount
   useEffect(() => {
@@ -205,11 +196,7 @@ export default function App() {
         if (parsed.journey) setJourney(parsed.journey);
         if (typeof parsed.currentStepIndex === 'number') setCurrentStepIndex(parsed.currentStepIndex);
         if (parsed.familiarity) setFamiliarity(parsed.familiarity);
-        if (parsed.persona) setPersona(parsed.persona);
         if (typeof parsed.isPowerSaving === 'boolean') setIsPowerSaving(parsed.isPowerSaving);
-        if (typeof parsed.shareId === 'string') {
-          setSharedState((prev) => ({ ...prev, shareId: parsed.shareId }));
-        }
       }
     } catch (e) {
       console.warn('Could not restore local session:', e);
@@ -225,44 +212,13 @@ export default function App() {
           journey,
           currentStepIndex,
           familiarity,
-          persona,
           isPowerSaving,
-          shareId: sharedState.shareId,
         })
       );
     } catch (e) {
       // Storage quota or private browsing
     }
-  }, [journey, currentStepIndex, familiarity, persona, isPowerSaving, sharedState.shareId]);
-
-  // Push the sender's live progress to the server so anyone with the share
-  // link (no login) can poll for real, current status — not just a preview
-  // rendered locally in the sender's own tab.
-  useEffect(() => {
-    fetch('/api/share/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        shareId: sharedState.shareId,
-        recipientName: sharedState.recipientName,
-        destination: sharedState.destination,
-        currentETA: sharedState.currentETA,
-        progressPercentage: sharedState.progressPercentage,
-        statusText: sharedState.statusText,
-        isArrived: sharedState.isArrived,
-      }),
-    }).catch(() => {
-      // Best-effort — the sender's own view still works from local state either way.
-    });
-  }, [
-    sharedState.shareId,
-    sharedState.recipientName,
-    sharedState.destination,
-    sharedState.currentETA,
-    sharedState.progressPercentage,
-    sharedState.statusText,
-    sharedState.isArrived,
-  ]);
+  }, [journey, currentStepIndex, familiarity, isPowerSaving]);
 
   // Geolocation tracking & state management
   useEffect(() => {
@@ -289,7 +245,7 @@ export default function App() {
         currentStepIndex,
         getCurrentLocation: () => userLocation,
         familiarityMode: familiarity,
-        userPersona: persona,
+        userPersona: 'default',
         isPowerSaving,
         onProactiveGuidance: (speechText) => {
           speakText(speechText);
@@ -323,7 +279,7 @@ export default function App() {
     return () => {
       journeyMonitor.stop();
     };
-  }, [journey, currentStepIndex, activeTab, isArrivalComplete, familiarity, persona, isPowerSaving, userLocation]);
+  }, [journey, currentStepIndex, activeTab, isArrivalComplete, familiarity, isPowerSaving, userLocation]);
 
   // Handle Speech Recognition setup
   useEffect(() => {
@@ -397,35 +353,9 @@ export default function App() {
     });
   };
 
-  // Ask Gemini to rephrase the deterministic step guidance naturally each time,
-  // instead of always reciting the same fixed template string. Same facts
-  // (landmark, direction, distance), varied wording. Falls back to the raw
-  // template instantly if Gemini is slow or unreachable.
-  const fetchNarratedGuidance = async (step: JourneyStep, fam: FamiliarityLevel): Promise<string> => {
-    const fallback = step.guidance[fam] || step.guidance.full;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch('/api/companion/narrate-step', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step, familiarityMode: fam, persona }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.text) return data.text;
-      }
-    } catch (e) {
-      // Network error or timeout — use the deterministic fallback below.
-    }
-    return fallback;
-  };
-
   // Speak active step guidance
-  const speakCurrentStep = async () => {
-    const text = await fetchNarratedGuidance(activeStep, familiarity);
+  const speakCurrentStep = () => {
+    const text = activeStep.guidance[familiarity] || activeStep.guidance.full;
     speakText(text);
   };
 
@@ -449,28 +379,31 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: userText,
-          persona, // Persona parameter: 'rachel' | 'arjun' | 'lim' | 'default'
+          persona: 'default',
           currentStep: activeStep,
           familiarityMode: familiarity,
           isMissedStop: missedStopState.isMissed,
           isDisrupted: disruption.active,
+          currentLocation: userLocation,
           journeyState: {
             origin: journey.origin,
             destination: journey.destination,
             stepIndex: currentStepIndex,
             totalSteps: journey.steps.length,
           },
-          // Recent turns so Gemini knows what it already said and doesn't
-          // repeat the same opener/phrasing across a real conversation.
-          conversationHistory: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
-          // Real GPS location, so a voice request like "I need to go to Pasir Ris"
-          // plans from where the commuter actually is instead of a guessed origin.
-          currentLocation: userLocation,
         }),
       });
 
       const data = await res.json();
       const reply = data.reply || "You're right on track. Keep following the sheltered linkway.";
+
+      // Handle dynamic route updates from the AI Companion (e.g. rain/weather/sheltered rerouting)
+      if (data.updatedJourney && data.updatedJourney.steps?.length) {
+        setJourney(data.updatedJourney);
+        setCurrentStepIndex(0);
+        setIsArrivalComplete(false);
+        setIsOffRoute(false);
+      }
 
       const compMsg: CompanionMessage = {
         id: `comp-${Date.now()}`,
@@ -500,13 +433,13 @@ export default function App() {
   };
 
   // Step navigation
-  const handleNextStep = async () => {
+  const handleNextStep = () => {
     if (currentStepIndex < journey.steps.length - 1) {
       const nextIdx = currentStepIndex + 1;
       setCurrentStepIndex(nextIdx);
       speechService.playSubtleChime();
       const nextStep = journey.steps[nextIdx];
-      const text = await fetchNarratedGuidance(nextStep, familiarity);
+      const text = nextStep.guidance[familiarity] || nextStep.guidance.full;
       speakText(text);
     } else {
       // Arrived (Screen 7 in architecture diagram)
@@ -516,112 +449,21 @@ export default function App() {
     }
   };
 
-  const handleSelectPersona = (p: 'rachel' | 'arjun' | 'lim' | 'default') => {
-    setPersona(p);
-    if (p === 'rachel') {
-      const match = PRESET_JOURNEYS.find((j) => j.id === 'rachel-tampines-raffles');
-      if (match) {
-        setJourney(match);
-        setCurrentStepIndex(0);
-        setFamiliarity('light');
-        setHistoryCount(match.travelHistoryCount);
-      }
-      speakText("Switched to Rachel mode. Direct, 1-line guidance with on-time buffer tracking.");
-    } else if (p === 'arjun') {
-      const match = PRESET_JOURNEYS.find((j) => j.id === 'arjun-punggol-onenorth');
-      if (match) {
-        setJourney(match);
-        setCurrentStepIndex(0);
-        setFamiliarity('medium');
-        setHistoryCount(match.travelHistoryCount);
-      }
-      speakText("Switched to Arjun mode. Multi-modal cycling and sheltered path alerts active.");
-    } else if (p === 'lim') {
-      const match = PRESET_JOURNEYS.find((j) => j.id === 'lim-bedok-sgh');
-      if (match) {
-        setJourney(match);
-        setCurrentStepIndex(0);
-        setFamiliarity('full');
-        setHistoryCount(match.travelHistoryCount);
-      }
-      speakText("Switched to Mdm Lim mode. Step-free routes and live lift monitoring enabled.");
-    } else {
-      speakText("Switched to Standard commuter mode.");
-    }
-  };
-
-  const handleStartPlannedJourney = async (
-    routeKey: string,
-    origin: string,
-    destination: string,
-    arrivalTime: string
-  ) => {
-    // Only use a curated preset (persona demo scenarios) when the caller explicitly
-    // selected one by id AND hasn't edited its origin/destination away from the
-    // canonical values — otherwise every journey, including the default plan form,
-    // must go through live OneMap routing rather than fixed local data.
-    const match = routeKey
-      ? PRESET_JOURNEYS.find((r) => r.id === routeKey && r.origin === origin && r.destination === destination)
-      : null;
-
-    if (match) {
-      setJourney(match);
-      setHistoryCount(match.travelHistoryCount);
-      if (match.travelHistoryCount === 0) setFamiliarity('full');
-      else if (match.travelHistoryCount < 8) setFamiliarity('medium');
-      else setFamiliarity('light');
-    } else {
-      // Dynamic Singapore Route Planning
-      try {
-        const res = await fetch('/api/journey/plan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            // Never guess a specific place when it's blank — prefer real GPS
-            // (sent below) and otherwise let the server fall through to its
-            // own neutral central-Singapore default rather than a fake origin.
-            origin: origin || '',
-            destination: destination || '',
-            desiredArrivalTime: arrivalTime || '9:30 AM',
-            currentLocation: userLocation,
-          }),
-        });
-
-        if (res.ok) {
-          const dynamicJourney: Journey = await res.json();
-          setJourney(dynamicJourney);
-          setFamiliarity('full');
-        } else {
-          throw new Error('Dynamic routing failed');
-        }
-      } catch (err) {
-        console.warn('Fallback to standard journey:', err);
-        setJourney({
-          ...DEFAULT_JOURNEY,
-          id: `custom-${Date.now()}`,
-          title: `${origin} to ${destination}`,
-          origin,
-          destination,
-          desiredArrivalTime: arrivalTime || '9:30 AM',
-        });
-        setFamiliarity('full');
-      }
-    }
-
-    // Automatically align persona with chosen scenario
-    if (routeKey.includes('rachel') || destination.toLowerCase().includes('raffles') || destination.toLowerCase().includes('republic')) {
-      setPersona('rachel');
-    } else if (routeKey.includes('arjun') || destination.toLowerCase().includes('one-north') || destination.toLowerCase().includes('oasis')) {
-      setPersona('arjun');
-    } else if (routeKey.includes('lim') || destination.toLowerCase().includes('sgh') || destination.toLowerCase().includes('hospital')) {
-      setPersona('lim');
-    }
-
+  const handleStartPlannedJourney = (selectedJourney: Journey) => {
+    setJourney(selectedJourney);
+    setHistoryCount(selectedJourney.travelHistoryCount || 0);
+    const calculatedFamiliarity =
+      (selectedJourney.travelHistoryCount || 0) === 0
+        ? 'full'
+        : (selectedJourney.travelHistoryCount || 0) < 8
+        ? 'medium'
+        : 'light';
+    setFamiliarity(calculatedFamiliarity);
     setCurrentStepIndex(0);
     setIsArrivalComplete(false);
     setIsOffRoute(false);
     setActiveTab('travel');
-    speakText(`Journey planned to ${destination}. Look up — I'm traveling alongside you.`);
+    speakText(`Journey started to ${selectedJourney.destination}. Look up — I'm traveling alongside you.`);
   };
 
   // Recalculate route upon genuine divergence
@@ -690,24 +532,29 @@ export default function App() {
 
   // Simulate Missed Bus Stop
   const handleTriggerMissedStop = () => {
-    setMissedStopState((prev) => ({ ...prev, isMissed: true }));
+    const recoveryETA = computeLiveETA(remainingMins + 7, liveDate);
+    setMissedStopState((prev) => ({
+      ...prev,
+      isMissed: true,
+      newETA: recoveryETA,
+    }));
 
     // Inject the recovery steps into journey
     setJourney((prev) => ({
       ...prev,
-      calculatedETA: '6:17 PM',
+      calculatedETA: recoveryETA,
       steps: MISSED_STOP_RECOVERY_STEPS,
     }));
     setCurrentStepIndex(0);
 
     const explanation =
-      "You've gone one stop past where we planned to get off. That's okay — I've adjusted the journey. Stay at this stop and take Bus 65. Your new ETA is 6:17 PM.";
+      `You've gone one stop past where we planned to get off. That's okay — I've adjusted the journey. Stay at this stop and take Bus 65. Your new ETA is ${recoveryETA}.`;
 
     const alertMsg: CompanionMessage = {
       id: `missed-${Date.now()}`,
       sender: 'companion',
       text: explanation,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: liveNowString,
       source: 'system',
     };
     setMessages((prev) => [...prev, alertMsg]);
@@ -727,15 +574,24 @@ export default function App() {
 
   // Trigger Transport Disruption
   const handleTriggerDisruption = () => {
-    setDisruption((prev) => ({ ...prev, active: true }));
+    const delayedETA = computeLiveETA(remainingMins + 18, liveDate);
+    const bypassETA = computeLiveETA(remainingMins, liveDate);
+
+    setDisruption((prev) => ({
+      ...prev,
+      active: true,
+      currentRouteETA: delayedETA,
+      alternativeRouteETA: bypassETA,
+    }));
+
     const speechPrompt =
-      "There's a disruption ahead on the Downtown Line near Bugis. Your current route would arrive at 9:07 AM. I found another route via North East Line that should arrive at 8:49 AM. Would you like to switch?";
+      `There's a disruption ahead on the Downtown Line near Bugis. Your current route would arrive at ${delayedETA}. I found another route via North East Line that should arrive at ${bypassETA}. Would you like to switch?`;
 
     const alertMsg: CompanionMessage = {
       id: `disrupt-${Date.now()}`,
       sender: 'companion',
       text: speechPrompt,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: liveNowString,
       source: 'system',
     };
     setMessages((prev) => [...prev, alertMsg]);
@@ -744,17 +600,18 @@ export default function App() {
 
   // Accept alternative route from disruption
   const handleAcceptDisruptionRoute = () => {
+    const bypassETA = computeLiveETA(remainingMins, liveDate);
     setDisruption((prev) => ({ ...prev, active: false }));
     setJourney((prev) => ({
       ...prev,
       title: 'Toa Payoh to Bugis (Bypass via NEL)',
-      calculatedETA: disruption.alternativeRouteETA,
+      calculatedETA: bypassETA,
       steps: disruption.alternativeSteps,
     }));
     setCurrentStepIndex(0);
 
     const confirmSpeech =
-      "Switched to North East Line via Dhoby Ghaut. Your new ETA is 8:49 AM, saving you 18 minutes.";
+      `Switched to North East Line via Dhoby Ghaut. Your new ETA is ${bypassETA}, saving you 18 minutes.`;
     speakText(confirmSpeech);
   };
 
@@ -789,8 +646,6 @@ export default function App() {
           onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
           origin={journey.origin}
           destination={journey.destination}
-          persona={persona}
-          onSelectPersona={handleSelectPersona}
         />
 
         {/* Content Body */}
@@ -865,10 +720,9 @@ export default function App() {
                     stepIndex={currentStepIndex}
                     totalSteps={journey.steps.length}
                     familiarity={familiarity}
-                    eta={journey.calculatedETA}
-                    desiredTime={journey.desiredArrivalTime}
+                    eta={liveCalculatedETA}
+                    desiredTime={liveDesiredArrival}
                     isPowerSaving={isPowerSaving}
-                    persona={persona}
                     onNextStep={handleNextStep}
                     onPrevStep={handlePrevStep}
                     onSpeakInstruction={speakCurrentStep}
@@ -916,8 +770,6 @@ export default function App() {
                     isDisruptionActive={disruption.active}
                     isOffRouteActive={isOffRoute}
                     isPowerSaving={isPowerSaving}
-                    activePersona={persona}
-                    onSelectPersona={handleSelectPersona}
                   />
                 </>
               )}
@@ -937,8 +789,6 @@ export default function App() {
               currentStep={activeStep}
               familiarity={familiarity}
               isPowerSaving={isPowerSaving}
-              persona={persona}
-              onSelectPersona={handleSelectPersona}
             />
           )}
 
@@ -1006,8 +856,6 @@ export default function App() {
           onReplayAudio={(text) => speakText(text)}
           currentStep={activeStep}
           familiarity={familiarity}
-          persona={persona}
-          onSelectPersona={handleSelectPersona}
         />
 
         <ETAShareModal
@@ -1037,7 +885,7 @@ export default function App() {
           onTogglePowerSave={() => setIsPowerSaving(false)}
           nextStepTitle={activeStep.title}
           landmark={activeStep.landmark}
-          eta={journey.calculatedETA}
+          eta={liveCalculatedETA}
           onTapVoice={toggleListen}
           isListening={isListening}
           isSpeaking={isSpeaking}

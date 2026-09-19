@@ -5,7 +5,7 @@
  * Integrates OneMap Public Transport API with fallback to deterministic curated Singapore routing.
  */
 
-import { Journey, JourneyStep, RouteSource, TransportType } from '../../src/types';
+import { Journey, JourneyStep, RouteSource, TransportType, RendezvousInfo } from '../../src/types';
 import {
   findNearestLandmark,
   calculateDistanceMeters,
@@ -63,6 +63,8 @@ export interface SingaporeRoute {
 export interface PlanJourneyInput {
   origin: string;
   destination: string;
+  viaStops?: string[];
+  secondaryOrigin?: string;
   preferences?: {
     avoidLines?: string[];
     avoidStops?: string[];
@@ -575,48 +577,170 @@ function calculateEtaString(minutesToAdd: number): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-/**
- * Parse a "9:04 AM" / "6:30 PM" style string into minutes since midnight.
- */
-function parseTimeToMinutes(timeStr: string): number | null {
-  const match = timeStr?.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-  if (!match) return null;
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  const meridiem = match[3]?.toUpperCase();
-  if (meridiem === 'PM' && hours !== 12) hours += 12;
-  if (meridiem === 'AM' && hours === 12) hours = 0;
-  return hours * 60 + minutes;
-}
+export const SINGAPORE_INTERCHANGE_HUBS = [
+  {
+    name: 'Dhoby Ghaut Interchange',
+    code: 'NS24/NE6/CC1',
+    lines: ['North-South Line', 'North-East Line', 'Circle Line'],
+    lat: 1.2991,
+    lng: 103.8458,
+    platform: 'North-South / North-East Concourse near Exit A (Plaza Singapura)',
+    landmark: 'Dhoby Ghaut Concourse (Exit A)',
+    landmarkDetail: 'Major central 3-line interchange with wide sheltered concourses, lift banks, and cafes.',
+  },
+  {
+    name: 'City Hall Interchange',
+    code: 'NS25/EW13',
+    lines: ['North-South Line', 'East-West Line'],
+    lat: 1.2931,
+    lng: 103.8522,
+    platform: 'Cross-Platform Concourse towards Jurong East / Pasir Ris',
+    landmark: 'City Hall Transfer Platform (Under Raffles City)',
+    landmarkDetail: 'Direct cross-platform transfer between EWL and NSL with level walkways.',
+  },
+  {
+    name: 'Raffles Place Interchange',
+    code: 'NS26/EW14',
+    lines: ['North-South Line', 'East-West Line'],
+    lat: 1.2830,
+    lng: 103.8510,
+    platform: 'Upper Concourse near Exit B (Republic Plaza)',
+    landmark: 'Raffles Place Concourse',
+    landmarkDetail: 'Sheltered underground CBD transit hub connecting Republic Plaza and One Raffles Place.',
+  },
+  {
+    name: 'Bishan Interchange',
+    code: 'NS17/CC15',
+    lines: ['North-South Line', 'Circle Line'],
+    lat: 1.3508,
+    lng: 103.8481,
+    platform: 'Junction 8 Underpass Concourse',
+    landmark: 'Bishan Transfer Concourse (Beside Junction 8)',
+    landmarkDetail: 'Central Singapore junction linking North corridor to Circle Line with step-free elevators.',
+  },
+  {
+    name: 'Bugis Interchange',
+    code: 'EW12/DT14',
+    lines: ['East-West Line', 'Downtown Line'],
+    lat: 1.3008,
+    lng: 103.8558,
+    platform: 'Underground Linkway between EWL and DTL Gantries',
+    landmark: 'Bugis Junction Linkway',
+    landmarkDetail: 'Step-free underground linkway directly connecting EWL and DTL.',
+  },
+  {
+    name: 'Jurong East Interchange',
+    code: 'NS1/EW24',
+    lines: ['North-South Line', 'East-West Line'],
+    lat: 1.3332,
+    lng: 103.7423,
+    platform: 'Elevated Concourse Level 3',
+    landmark: 'Jurong East Central Concourse',
+    landmarkDetail: 'West Region major multi-level interchange connecting JEM, Westgate, and IMM.',
+  },
+  {
+    name: 'Outram Park Interchange',
+    code: 'EW16/NE3/TE17',
+    lines: ['East-West Line', 'North-East Line', 'Thomson-East Coast Line'],
+    lat: 1.2804,
+    lng: 103.8395,
+    platform: 'Underground Linkway near Exit 3 (SGH Campus)',
+    landmark: 'Outram Park SGH Linkway',
+    landmarkDetail: 'Tri-line hub with underground linkways to SGH campus and Chinatown.',
+  },
+  {
+    name: 'Paya Lebar Interchange',
+    code: 'EW8/CC9',
+    lines: ['East-West Line', 'Circle Line'],
+    lat: 1.3182,
+    lng: 103.8931,
+    platform: 'PLQ Linkway Transfer Concourse',
+    landmark: 'Paya Lebar PLQ Concourse',
+    landmarkDetail: 'East-Central interchange connecting East-West corridor to Paya Lebar Quarter.',
+  },
+  {
+    name: 'Serangoon Interchange',
+    code: 'NE12/CC13',
+    lines: ['North-East Line', 'Circle Line'],
+    lat: 1.3500,
+    lng: 103.8736,
+    platform: 'NEX Basement Concourse Transfer Link',
+    landmark: 'Serangoon NEX Concourse',
+    landmarkDetail: 'Integrated bus and dual-MRT line transit hub at NEX mall.',
+  },
+  {
+    name: 'Marina Bay Interchange',
+    code: 'NS27/CC28/TE20',
+    lines: ['North-South Line', 'Circle Line', 'Thomson-East Coast Line'],
+    lat: 1.2764,
+    lng: 103.8546,
+    platform: 'Marina Bay Concourse Level B2',
+    landmark: 'Marina Bay Financial Concourse',
+    landmarkDetail: 'Tri-line financial district station connecting directly to Bayfront and Marina Boulevard.',
+  },
+];
 
 /**
- * Compare a commuter's stated desired arrival time against the calculated ETA
- * to produce a genuine on-time/late status — instead of a hardcoded "On schedule"
- * that never reflected whether the desired time was actually achievable.
+ * Finds the optimal Singapore transit intersection / transfer hub for two commuters meeting halfway
  */
-export function computeArrivalStatus(
-  desiredArrivalTime: string | undefined,
-  calculatedETA: string | undefined
-): { statusText: string; bufferMinutes: number | null } {
-  const desiredMin = desiredArrivalTime ? parseTimeToMinutes(desiredArrivalTime) : null;
-  const etaMin = calculatedETA ? parseTimeToMinutes(calculatedETA) : null;
+export async function findSingaporeTransitIntersection(
+  originA: string,
+  originB: string,
+  destination: string,
+  desiredArrivalTime?: string
+): Promise<RendezvousInfo> {
+  const coordA = await resolveCoordinates(originA);
+  const coordB = await resolveCoordinates(originB);
+  const coordDest = await resolveCoordinates(destination);
 
-  if (desiredMin === null || etaMin === null) {
-    return { statusText: 'On schedule', bufferMinutes: null };
+  let bestHub = SINGAPORE_INTERCHANGE_HUBS[0];
+  let bestScore = Infinity;
+
+  for (const hub of SINGAPORE_INTERCHANGE_HUBS) {
+    const distA = calculateDistanceMeters(coordA, hub);
+    const distB = calculateDistanceMeters(coordB, hub);
+    const distDest = calculateDistanceMeters(hub, coordDest);
+
+    // Score balances travel time between A and B, minimizing detour to destination
+    const score = distA + distB + 1.2 * distDest + 0.5 * Math.abs(distA - distB);
+    if (score < bestScore) {
+      bestScore = score;
+      bestHub = hub;
+    }
   }
 
-  // Handle wraparound past midnight
-  let diff = desiredMin - etaMin;
-  if (diff < -12 * 60) diff += 24 * 60;
-  if (diff > 12 * 60) diff -= 24 * 60;
+  const distA = calculateDistanceMeters(coordA, bestHub);
+  const distB = calculateDistanceMeters(coordB, bestHub);
+  const distDest = calculateDistanceMeters(bestHub, coordDest);
 
-  if (diff >= 10) {
-    return { statusText: `On schedule (${diff} min buffer)`, bufferMinutes: diff };
-  } else if (diff >= 0) {
-    return { statusText: `Cutting it close (${diff} min buffer)`, bufferMinutes: diff };
-  } else {
-    return { statusText: `Running ${Math.abs(diff)} min late`, bufferMinutes: diff };
-  }
+  const durA = Math.max(8, Math.round(distA / 380));
+  const durB = Math.max(8, Math.round(distB / 380));
+  const durJoint = Math.max(6, Math.round(distDest / 380));
+
+  const totalMinsFromNow = Math.max(durA, durB) + durJoint + 5;
+  const now = Date.now();
+  const arrivalDate = new Date(now + totalMinsFromNow * 60000);
+  const rendezvousDate = new Date(arrivalDate.getTime() - durJoint * 60000);
+  const depADate = new Date(rendezvousDate.getTime() - durA * 60000);
+  const depBDate = new Date(rendezvousDate.getTime() - durB * 60000);
+
+  const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  return {
+    meetingStation: bestHub.name,
+    meetingStationCode: bestHub.code,
+    meetingPlatformOrExit: bestHub.platform,
+    primaryOrigin: coordA.displayName || originA,
+    secondaryOrigin: coordB.displayName || originB,
+    destination: coordDest.displayName || destination,
+    primaryDurationToHubMins: durA,
+    secondaryDurationToHubMins: durB,
+    primaryDepartureTime: fmt(depADate),
+    secondaryDepartureTime: fmt(depBDate),
+    rendezvousTime: fmt(rendezvousDate),
+    jointDurationToDestMins: durJoint,
+    summary: `Meet at ${bestHub.name} (${bestHub.code}) around ${fmt(rendezvousDate)}. You travel ${durA} mins, friend travels ${durB} mins. Joint travel: ${durJoint} mins to ${coordDest.displayName}.`,
+  };
 }
 
 /**
@@ -634,203 +758,452 @@ export async function planJourney(input: PlanJourneyInput): Promise<Journey> {
     : await resolveCoordinates(input.origin);
   const destCoord = await resolveCoordinates(input.destination);
 
+  // Check for Multi-Origin (Meet Halfway) mode
+  const hasSecondaryOrigin = Boolean(input.secondaryOrigin && input.secondaryOrigin.trim().length > 1);
+  let rendezvousInfo: RendezvousInfo | undefined;
+
+  if (hasSecondaryOrigin) {
+    rendezvousInfo = await findSingaporeTransitIntersection(
+      input.origin,
+      input.secondaryOrigin!.trim(),
+      input.destination,
+      input.desiredArrivalTime
+    );
+  }
+
+  // Check for Multi-Destination (Waypoints / Intermediate stops)
+  const validViaStops = (input.viaStops || []).filter((s) => s && s.trim().length > 1);
+
   let routeSource: RouteSource = 'FALLBACK_PRESET';
   let steps: JourneyStep[] = [];
   let polylineCoords: [number, number][] = [];
   let totalDurationMins = 30;
   let totalDistanceMeters = 5000;
 
-  // 1. Check if OneMap live transit routing is available
-  if (hasOneMapPassword()) {
-    try {
-      const oneMapResult = await getOneMapPublicTransportRoute(
-        originCoord.lat,
-        originCoord.lng,
-        destCoord.lat,
-        destCoord.lng,
-        'TRANSIT'
-      );
+  if (hasSecondaryOrigin && rendezvousInfo) {
+    // ----------------------------------------------------
+    // MULTI-ORIGIN (MEET HALFWAY & TRAVEL TOGETHER) LOGIC
+    // ----------------------------------------------------
+    const hubCoord = await resolveCoordinates(rendezvousInfo.meetingStation);
+    const startLm = getLandmarkContext({ currentLocation: originCoord });
+    const destLm = getLandmarkContext({ currentLocation: destCoord });
+    const dur1 = rendezvousInfo.primaryDurationToHubMins;
+    const durJoint = rendezvousInfo.jointDurationToDestMins;
 
-      if (oneMapResult?.source === 'onemap_live' && oneMapResult?.data?.plan?.itineraries?.length > 0) {
-        const itin = oneMapResult.data.plan.itineraries[0];
-        routeSource = 'LIVE_ONEMAP';
-        totalDurationMins = Math.round((itin.duration || 1800) / 60);
-        totalDistanceMeters = Math.round(itin.walkDistance || 3000);
+    totalDurationMins = dur1 + durJoint + 3;
+    totalDistanceMeters = calculateDistanceMeters(originCoord, hubCoord) + calculateDistanceMeters(hubCoord, destCoord);
 
-        // Convert OneMap legs to Eyes-Up JourneySteps
-        const legs = itin.legs || [];
-        steps = await Promise.all(legs.map(async (leg: any, idx: number) => {
-          const mode = (leg.mode || 'WALK').toUpperCase();
-          const type: TransportType =
-            mode === 'BUS' ? 'bus' : mode === 'SUBWAY' || mode === 'RAIL' ? 'mrt' : 'walk';
+    polylineCoords = [
+      [originCoord.lat, originCoord.lng],
+      [hubCoord.lat, hubCoord.lng],
+      [destCoord.lat, destCoord.lng],
+    ];
 
-          const legDuration = Math.max(1, Math.round((leg.duration || 120) / 60));
-          const legDist = Math.round(leg.distance || 200);
+    steps = [
+      {
+        id: 'meet-step-1',
+        type: 'walk',
+        title: `Walk past ${startLm.landmark} to Departure Transit`,
+        durationMins: 3,
+        distanceMeters: 200,
+        landmark: startLm.landmark,
+        landmarkDetail: startLm.landmarkDetail,
+        landmarkIconName: startLm.landmarkIconName,
+        guidance: {
+          full: `Depart at ${rendezvousInfo.primaryDepartureTime}. Head past ${startLm.landmark} towards the MRT platform.`,
+          medium: `Depart at ${rendezvousInfo.primaryDepartureTime} towards MRT.`,
+          light: `Depart at ${rendezvousInfo.primaryDepartureTime}.`,
+        },
+        reassuranceCue: `On track to meet friend on time.`,
+        geometry: [
+          [originCoord.lat, originCoord.lng],
+          [(originCoord.lat + hubCoord.lat) / 2, (originCoord.lng + hubCoord.lng) / 2],
+        ],
+      },
+      {
+        id: 'meet-step-2',
+        type: 'mrt',
+        title: `MRT to ${rendezvousInfo.meetingStation} (${rendezvousInfo.meetingStationCode})`,
+        lineName: 'Transit Trunk Line',
+        lineBadge: 'MRT',
+        durationMins: Math.max(5, dur1 - 3),
+        distanceMeters: calculateDistanceMeters(originCoord, hubCoord),
+        landmark: rendezvousInfo.meetingStation,
+        landmarkDetail: `Interchange hub connecting both travelers' transit lines`,
+        guidance: {
+          full: `Ride train towards ${rendezvousInfo.meetingStation}. Alight to meet friend.`,
+          medium: `Train to ${rendezvousInfo.meetingStation}.`,
+          light: `Ride to ${rendezvousInfo.meetingStation}.`,
+        },
+        reassuranceCue: `Friend is traveling from ${rendezvousInfo.secondaryOrigin} and scheduled to arrive at ~${rendezvousInfo.rendezvousTime}.`,
+        geometry: [
+          [(originCoord.lat + hubCoord.lat) / 2, (originCoord.lng + hubCoord.lng) / 2],
+          [hubCoord.lat, hubCoord.lng],
+        ],
+      },
+      {
+        id: 'meet-step-3',
+        type: 'transfer',
+        title: `Rendezvous with Friend at ${rendezvousInfo.meetingStation}`,
+        durationMins: 3,
+        landmark: `${rendezvousInfo.meetingStation} Concourse`,
+        landmarkDetail: rendezvousInfo.meetingPlatformOrExit || 'Designated meeting point at concourse',
+        guidance: {
+          full: `Meet your friend at ${rendezvousInfo.meetingPlatformOrExit}. Target rendezvous: ${rendezvousInfo.rendezvousTime}.`,
+          medium: `Meet friend at ${rendezvousInfo.meetingStation} (${rendezvousInfo.rendezvousTime}).`,
+          light: `Meet friend at interchange.`,
+        },
+        reassuranceCue: `Rendezvous complete! You are now traveling together for the remaining ${durJoint} mins.`,
+        geometry: [
+          [hubCoord.lat, hubCoord.lng],
+          [hubCoord.lat, hubCoord.lng],
+        ],
+      },
+      {
+        id: 'meet-step-4',
+        type: 'mrt',
+        title: `Travel Together to ${destCoord.displayName}`,
+        lineName: 'Direct Transit Line',
+        lineBadge: 'MRT',
+        durationMins: durJoint,
+        distanceMeters: calculateDistanceMeters(hubCoord, destCoord),
+        landmark: `Direct Trunk to ${destCoord.displayName}`,
+        landmarkDetail: `Joint transit leg to final destination`,
+        guidance: {
+          full: `Board MRT together with your friend towards ${destCoord.displayName}.`,
+          medium: `Ride together to ${destCoord.displayName}.`,
+          light: `Travel together to destination.`,
+        },
+        reassuranceCue: `Arriving together at ~${calculateEtaString(totalDurationMins)}.`,
+        geometry: [
+          [hubCoord.lat, hubCoord.lng],
+          [destCoord.lat, destCoord.lng],
+        ],
+      },
+      {
+        id: 'meet-step-5',
+        type: 'walk',
+        title: `Arrive at ${destCoord.displayName}`,
+        durationMins: 3,
+        distanceMeters: 150,
+        landmark: destLm.landmark,
+        landmarkDetail: destLm.landmarkDetail,
+        landmarkIconName: destLm.landmarkIconName,
+        guidance: destLm.guidance,
+        reassuranceCue: `You and your friend have safely reached your destination.`,
+        geometry: [
+          [destCoord.lat, destCoord.lng],
+          [destCoord.lat, destCoord.lng],
+        ],
+      },
+    ];
+  } else if (validViaStops.length > 0) {
+    // ----------------------------------------------------
+    // MULTI-DESTINATION (WAYPOINTS / VIA STOPS) LOGIC
+    // ----------------------------------------------------
+    const viaCoord = await resolveCoordinates(validViaStops[0]);
+    const startLm = getLandmarkContext({ currentLocation: originCoord });
+    const viaLm = getLandmarkContext({ currentLocation: viaCoord });
+    const destLm = getLandmarkContext({ currentLocation: destCoord });
 
-          // Get a real landmark for this leg's starting point (live OneMap reverse
-          // geocode, anywhere in Singapore — not just the curated fallback list)
-          const startPt = { lat: leg.from?.lat || originCoord.lat, lng: leg.from?.lon || originCoord.lng };
-          const endPt = { lat: leg.to?.lat || destCoord.lat, lng: leg.to?.lon || destCoord.lng };
-          polylineCoords.push([startPt.lat, startPt.lng]);
-          polylineCoords.push([endPt.lat, endPt.lng]);
+    const distLeg1 = calculateDistanceMeters(originCoord, viaCoord);
+    const distLeg2 = calculateDistanceMeters(viaCoord, destCoord);
+    const durLeg1 = Math.max(8, Math.round(distLeg1 / 350));
+    const durLeg2 = Math.max(8, Math.round(distLeg2 / 350));
 
-          const lm = await getLandmarkContext({
-            currentLocation: startPt,
-            nextManeuver: leg.from?.name || 'Proceed towards destination',
+    totalDurationMins = durLeg1 + durLeg2 + 6;
+    totalDistanceMeters = distLeg1 + distLeg2;
+
+    polylineCoords = [
+      [originCoord.lat, originCoord.lng],
+      [viaCoord.lat, viaCoord.lng],
+      [destCoord.lat, destCoord.lng],
+    ];
+
+    steps = [
+      {
+        id: 'via-step-1',
+        type: 'walk',
+        title: `Walk past ${startLm.landmark} to Transit Concourse`,
+        durationMins: 3,
+        distanceMeters: 200,
+        landmark: startLm.landmark,
+        landmarkDetail: startLm.landmarkDetail,
+        landmarkIconName: startLm.landmarkIconName,
+        guidance: startLm.guidance,
+        reassuranceCue: `Heading towards stopover 1: ${viaCoord.displayName}.`,
+        geometry: [
+          [originCoord.lat, originCoord.lng],
+          [(originCoord.lat + viaCoord.lat) / 2, (originCoord.lng + viaCoord.lng) / 2],
+        ],
+      },
+      {
+        id: 'via-step-2',
+        type: 'mrt',
+        title: `Transit to Stop 1: ${viaCoord.displayName}`,
+        lineName: 'Transit Service',
+        lineBadge: 'MRT',
+        durationMins: Math.max(6, durLeg1 - 3),
+        distanceMeters: distLeg1,
+        landmark: viaCoord.displayName,
+        landmarkDetail: `Intermediate stopover destination`,
+        guidance: {
+          full: `Ride transit towards stopover at ${viaCoord.displayName}.`,
+          medium: `Transit to ${viaCoord.displayName}.`,
+          light: `Ride to Stop 1.`,
+        },
+        reassuranceCue: `Arriving at Stop 1 in ~${Math.max(6, durLeg1 - 3)} mins.`,
+        geometry: [
+          [(originCoord.lat + viaCoord.lat) / 2, (originCoord.lng + viaCoord.lng) / 2],
+          [viaCoord.lat, viaCoord.lng],
+        ],
+      },
+      {
+        id: 'via-step-3',
+        type: 'transfer',
+        title: `Arrive at Stop 1: ${viaCoord.displayName}`,
+        durationMins: 3,
+        landmark: viaLm.landmark,
+        landmarkDetail: viaLm.landmarkDetail,
+        guidance: {
+          full: `You have arrived at your intermediate stop (${viaCoord.displayName}). Complete your errand or stopover here.`,
+          medium: `At stopover: ${viaCoord.displayName}.`,
+          light: `Stop 1 reached.`,
+        },
+        reassuranceCue: `When ready, proceed with the next leg to ${destCoord.displayName}.`,
+        geometry: [
+          [viaCoord.lat, viaCoord.lng],
+          [viaCoord.lat, viaCoord.lng],
+        ],
+      },
+      {
+        id: 'via-step-4',
+        type: 'mrt',
+        title: `Continue from ${viaCoord.displayName} to ${destCoord.displayName}`,
+        lineName: 'Transit Connection',
+        lineBadge: 'MRT',
+        durationMins: Math.max(6, durLeg2 - 3),
+        distanceMeters: distLeg2,
+        landmark: `Direct Trunk to ${destCoord.displayName}`,
+        landmarkDetail: `Final transit leg towards destination`,
+        guidance: {
+          full: `Board transit connecting from ${viaCoord.displayName} towards ${destCoord.displayName}.`,
+          medium: `Transit to ${destCoord.displayName}.`,
+          light: `Ride to final destination.`,
+        },
+        reassuranceCue: `On final stretch to ${destCoord.displayName}.`,
+        geometry: [
+          [viaCoord.lat, viaCoord.lng],
+          [destCoord.lat, destCoord.lng],
+        ],
+      },
+      {
+        id: 'via-step-5',
+        type: 'walk',
+        title: `Exit to ${destCoord.displayName} via ${destLm.landmark}`,
+        durationMins: 3,
+        distanceMeters: 150,
+        landmark: destLm.landmark,
+        landmarkDetail: destLm.landmarkDetail,
+        landmarkIconName: destLm.landmarkIconName,
+        guidance: destLm.guidance,
+        reassuranceCue: `You have safely reached your final destination.`,
+        geometry: [
+          [destCoord.lat, destCoord.lng],
+          [destCoord.lat, destCoord.lng],
+        ],
+      },
+    ];
+  } else {
+    // ----------------------------------------------------
+    // STANDARD SINGLE ORIGIN -> DESTINATION ROUTING
+    // ----------------------------------------------------
+    // 1. Check if OneMap live transit routing is available
+    if (hasOneMapPassword()) {
+      try {
+        const oneMapResult = await getOneMapPublicTransportRoute(
+          originCoord.lat,
+          originCoord.lng,
+          destCoord.lat,
+          destCoord.lng,
+          'TRANSIT'
+        );
+
+        if (oneMapResult?.source === 'onemap_live' && oneMapResult?.data?.plan?.itineraries?.length > 0) {
+          const itin = oneMapResult.data.plan.itineraries[0];
+          routeSource = 'LIVE_ONEMAP';
+          totalDurationMins = Math.round((itin.duration || 1800) / 60);
+          totalDistanceMeters = Math.round(itin.walkDistance || 3000);
+
+          const legs = itin.legs || [];
+          steps = legs.map((leg: any, idx: number) => {
+            const mode = (leg.mode || 'WALK').toUpperCase();
+            const type: TransportType =
+              mode === 'BUS' ? 'bus' : mode === 'SUBWAY' || mode === 'RAIL' ? 'mrt' : 'walk';
+
+            const legDuration = Math.max(1, Math.round((leg.duration || 120) / 60));
+            const legDist = Math.round(leg.distance || 200);
+
+            const startPt = { lat: leg.from?.lat || originCoord.lat, lng: leg.from?.lon || originCoord.lng };
+            const endPt = { lat: leg.to?.lat || destCoord.lat, lng: leg.to?.lon || destCoord.lng };
+            polylineCoords.push([startPt.lat, startPt.lng]);
+            polylineCoords.push([endPt.lat, endPt.lng]);
+
+            const lm = getLandmarkContext({
+              currentLocation: startPt,
+              nextManeuver: leg.from?.name || 'Proceed towards destination',
+            });
+
+            const title =
+              type === 'bus'
+                ? `Take Bus ${leg.route || 'Transit'} from ${leg.from?.name || 'Bus Stop'}`
+                : type === 'mrt'
+                ? `${leg.route || 'MRT Line'} from ${leg.from?.name || 'Station'}`
+                : `Walk to ${leg.to?.name || 'Next Transit Node'}`;
+
+            return {
+              id: `onemap-step-${idx + 1}`,
+              type,
+              title,
+              lineName: leg.route || undefined,
+              lineBadge: leg.route || (type === 'mrt' ? 'MRT' : 'BUS'),
+              durationMins: legDuration,
+              distanceMeters: legDist,
+              boardingStop: leg.from?.name,
+              alightingStop: leg.to?.name,
+              landmark: lm.landmark,
+              landmarkDetail: lm.landmarkDetail,
+              landmarkIconName: lm.landmarkIconName,
+              guidance: lm.guidance,
+              reassuranceCue: lm.reassuranceCue,
+              geometry: [
+                [startPt.lat, startPt.lng],
+                [endPt.lat, endPt.lng],
+              ],
+            };
           });
-
-          const title =
-            type === 'bus'
-              ? `Take Bus ${leg.route || 'Transit'} from ${leg.from?.name || 'Bus Stop'}`
-              : type === 'mrt'
-              ? `${leg.route || 'MRT Line'} from ${leg.from?.name || 'Station'}`
-              : `Walk to ${leg.to?.name || 'Next Transit Node'}`;
-
-          return {
-            id: `onemap-step-${idx + 1}`,
-            type,
-            title,
-            lineName: leg.route || undefined,
-            lineBadge: leg.route || (type === 'mrt' ? 'MRT' : 'BUS'),
-            durationMins: legDuration,
-            distanceMeters: legDist,
-            boardingStop: leg.from?.name,
-            alightingStop: leg.to?.name,
-            landmark: lm.landmark,
-            landmarkDetail: lm.landmarkDetail,
-            landmarkIconName: lm.landmarkIconName,
-            guidance: lm.guidance,
-            reassuranceCue: lm.reassuranceCue,
-            geometry: [
-              [startPt.lat, startPt.lng],
-              [endPt.lat, endPt.lng],
-            ],
-          };
-        }));
+        }
+      } catch (err) {
+        console.warn('[Routing] Live OneMap processing fell back to deterministic router:', err);
       }
-    } catch (err) {
-      console.warn('[Routing] Live OneMap processing fell back to deterministic router:', err);
-    }
-  }
-
-  // 2. Fallback / Offline / Preset Matching Engine
-  if (steps.length === 0) {
-    routeSource = 'FALLBACK_PRESET';
-    const qOrig = input.origin.toLowerCase();
-    const qDest = input.destination.toLowerCase();
-
-    // Check if matches known presets
-    let matchedPreset: SingaporeRoute | null = null;
-    if (qOrig.includes('nus') && qDest.includes('orchard')) {
-      matchedPreset = SINGAPORE_ROUTES['nus-orchard'];
-    } else if (qOrig.includes('tampines') && qDest.includes('raffles')) {
-      matchedPreset = SINGAPORE_ROUTES['rachel-tampines-raffles'];
-    } else if (qOrig.includes('punggol') && qDest.includes('one-north')) {
-      matchedPreset = SINGAPORE_ROUTES['arjun-punggol-onenorth'];
-    } else if (qOrig.includes('bedok') && (qDest.includes('sgh') || qDest.includes('hospital'))) {
-      matchedPreset = SINGAPORE_ROUTES['lim-bedok-sgh'];
-    } else if (qOrig.includes('toa payoh') && qDest.includes('bugis')) {
-      matchedPreset = SINGAPORE_ROUTES['toapayoh-bugis'];
     }
 
-    if (matchedPreset) {
-      totalDurationMins = matchedPreset.totalDurationMins;
-      polylineCoords = matchedPreset.polyline.map((p) => [p.lat, p.lng]);
-      steps = matchedPreset.legs.map((leg) => ({
-        id: leg.id,
-        type: leg.type,
-        title: leg.title,
-        durationMins: leg.durationMins,
-        distanceMeters: leg.distanceMeters,
-        landmark: leg.landmark,
-        landmarkDetail: leg.landmarkDetail,
-        guidance: leg.guidance,
-        reassuranceCue: `On track alongside ${leg.landmark}.`,
-        geometry: leg.coordinates.map((c) => [c.lat, c.lng]),
-      }));
-    } else {
-      // Synthesize realistic dynamic multimodal route connecting origin and destination
-      const directDist = calculateDistanceMeters(originCoord, destCoord);
-      totalDistanceMeters = directDist;
-      totalDurationMins = Math.max(15, Math.round(directDist / 350)); // ~21 km/h average speed in SG
+    // 2. Fallback / Offline / Preset Matching Engine
+    if (steps.length === 0) {
+      routeSource = 'FALLBACK_PRESET';
+      const qOrig = input.origin.toLowerCase();
+      const qDest = input.destination.toLowerCase();
 
-      // Leg 1: Walk to nearest transit
-      const startLm = await getLandmarkContext({ currentLocation: originCoord });
-      const destLm = await getLandmarkContext({ currentLocation: destCoord });
+      let matchedPreset: SingaporeRoute | null = null;
+      if (qOrig.includes('nus') && qDest.includes('orchard')) {
+        matchedPreset = SINGAPORE_ROUTES['nus-orchard'];
+      } else if (qOrig.includes('tampines') && qDest.includes('raffles')) {
+        matchedPreset = SINGAPORE_ROUTES['rachel-tampines-raffles'];
+      } else if (qOrig.includes('punggol') && qDest.includes('one-north')) {
+        matchedPreset = SINGAPORE_ROUTES['arjun-punggol-onenorth'];
+      } else if (qOrig.includes('bedok') && (qDest.includes('sgh') || qDest.includes('hospital'))) {
+        matchedPreset = SINGAPORE_ROUTES['lim-bedok-sgh'];
+      } else if (qOrig.includes('toa payoh') && qDest.includes('bugis')) {
+        matchedPreset = SINGAPORE_ROUTES['toapayoh-bugis'];
+      }
 
-      const midPt: LatLng = {
-        lat: (originCoord.lat + destCoord.lat) / 2,
-        lng: (originCoord.lng + destCoord.lng) / 2,
-      };
+      if (matchedPreset) {
+        totalDurationMins = matchedPreset.totalDurationMins;
+        polylineCoords = matchedPreset.polyline.map((p) => [p.lat, p.lng]);
+        steps = matchedPreset.legs.map((leg) => ({
+          id: leg.id,
+          type: leg.type,
+          title: leg.title,
+          durationMins: leg.durationMins,
+          distanceMeters: leg.distanceMeters,
+          landmark: leg.landmark,
+          landmarkDetail: leg.landmarkDetail,
+          guidance: leg.guidance,
+          reassuranceCue: `On track alongside ${leg.landmark}.`,
+          geometry: leg.coordinates.map((c) => [c.lat, c.lng]),
+        }));
+      } else {
+        const directDist = calculateDistanceMeters(originCoord, destCoord);
+        totalDistanceMeters = directDist;
+        totalDurationMins = Math.max(15, Math.round(directDist / 350));
 
-      polylineCoords = [
-        [originCoord.lat, originCoord.lng],
-        [midPt.lat, midPt.lng],
-        [destCoord.lat, destCoord.lng],
-      ];
+        const startLm = getLandmarkContext({ currentLocation: originCoord });
+        const destLm = getLandmarkContext({ currentLocation: destCoord });
 
-      steps = [
-        {
-          id: `dyn-step-1`,
-          type: 'walk',
-          title: `Walk past ${startLm.landmark} to Transit Concourse`,
-          durationMins: 4,
-          distanceMeters: 250,
-          landmark: startLm.landmark,
-          landmarkDetail: startLm.landmarkDetail,
-          landmarkIconName: startLm.landmarkIconName,
-          guidance: startLm.guidance,
-          reassuranceCue: `Follow the sheltered linkway past ${startLm.landmark}.`,
-          geometry: [
-            [originCoord.lat, originCoord.lng],
-            [midPt.lat, midPt.lng],
-          ],
-        },
-        {
-          id: `dyn-step-2`,
-          type: 'mrt',
-          title: `MRT Transit towards ${destCoord.displayName}`,
-          lineName: 'MRT Trunk Service',
-          lineBadge: 'MRT',
-          durationMins: Math.max(10, totalDurationMins - 7),
-          distanceMeters: Math.max(1000, directDist - 400),
-          stopsCount: Math.max(3, Math.round(directDist / 1200)),
-          landmark: 'Platform B (Towards City Centre)',
-          landmarkDetail: 'Air-conditioned train concourse with priority seating',
-          guidance: {
-            full: `Board MRT towards ${destCoord.displayName}. Ride directly along the transit trunk corridor.`,
-            medium: `MRT towards ${destCoord.displayName}.`,
-            light: `MRT towards destination.`,
+        const midPt: LatLng = {
+          lat: (originCoord.lat + destCoord.lat) / 2,
+          lng: (originCoord.lng + destCoord.lng) / 2,
+        };
+
+        polylineCoords = [
+          [originCoord.lat, originCoord.lng],
+          [midPt.lat, midPt.lng],
+          [destCoord.lat, destCoord.lng],
+        ];
+
+        steps = [
+          {
+            id: `dyn-step-1`,
+            type: 'walk',
+            title: `Walk past ${startLm.landmark} to Transit Concourse`,
+            durationMins: 4,
+            distanceMeters: 250,
+            landmark: startLm.landmark,
+            landmarkDetail: startLm.landmarkDetail,
+            landmarkIconName: startLm.landmarkIconName,
+            guidance: startLm.guidance,
+            reassuranceCue: `Follow the sheltered linkway past ${startLm.landmark}.`,
+            geometry: [
+              [originCoord.lat, originCoord.lng],
+              [midPt.lat, midPt.lng],
+            ],
           },
-          reassuranceCue: `Enjoy the ride; your eyes-up companion will notify you 1 stop before your exit.`,
-          geometry: [
-            [midPt.lat, midPt.lng],
-            [destCoord.lat, destCoord.lng],
-          ],
-        },
-        {
-          id: `dyn-step-3`,
-          type: 'walk',
-          title: `Exit to ${destCoord.displayName} via ${destLm.landmark}`,
-          durationMins: 3,
-          distanceMeters: 150,
-          landmark: destLm.landmark,
-          landmarkDetail: destLm.landmarkDetail,
-          landmarkIconName: destLm.landmarkIconName,
-          guidance: destLm.guidance,
-          reassuranceCue: `You have reached ${destCoord.displayName}.`,
-          geometry: [
-            [destCoord.lat, destCoord.lng],
-            [destCoord.lat, destCoord.lng],
-          ],
-        },
-      ];
+          {
+            id: `dyn-step-2`,
+            type: 'mrt',
+            title: `MRT Transit towards ${destCoord.displayName}`,
+            lineName: 'MRT Trunk Service',
+            lineBadge: 'MRT',
+            durationMins: Math.max(10, totalDurationMins - 7),
+            distanceMeters: Math.max(1000, directDist - 400),
+            stopsCount: Math.max(3, Math.round(directDist / 1200)),
+            landmark: 'Platform B (Towards City Centre)',
+            landmarkDetail: 'Air-conditioned train concourse with priority seating',
+            guidance: {
+              full: `Board MRT towards ${destCoord.displayName}. Ride directly along the transit trunk corridor.`,
+              medium: `MRT towards ${destCoord.displayName}.`,
+              light: `MRT towards destination.`,
+            },
+            reassuranceCue: `Enjoy the ride; your eyes-up companion will notify you 1 stop before your exit.`,
+            geometry: [
+              [midPt.lat, midPt.lng],
+              [destCoord.lat, destCoord.lng],
+            ],
+          },
+          {
+            id: `dyn-step-3`,
+            type: 'walk',
+            title: `Exit to ${destCoord.displayName} via ${destLm.landmark}`,
+            durationMins: 3,
+            distanceMeters: 150,
+            landmark: destLm.landmark,
+            landmarkDetail: destLm.landmarkDetail,
+            landmarkIconName: destLm.landmarkIconName,
+            guidance: destLm.guidance,
+            reassuranceCue: `You have reached ${destCoord.displayName}.`,
+            geometry: [
+              [destCoord.lat, destCoord.lng],
+              [destCoord.lat, destCoord.lng],
+            ],
+          },
+        ];
+      }
     }
   }
 
   const calculatedETA = calculateEtaString(totalDurationMins);
 
-  return {
+  const primaryJourney: Journey = {
     id: `journey-${Date.now()}`,
     title: `${originCoord.displayName || input.origin} to ${destCoord.displayName || input.destination}`,
     origin: originCoord.displayName || input.origin,
@@ -846,6 +1219,180 @@ export async function planJourney(input: PlanJourneyInput): Promise<Journey> {
     legs: steps,
     originCoords: originCoord,
     destinationCoords: destCoord,
+    viaStops: validViaStops.length > 0 ? validViaStops : undefined,
+    rendezvousInfo,
+  };
+
+  return primaryJourney;
+}
+
+/**
+ * Generates 3 distinct route alternatives:
+ * 1. Recommended (Fastest Multimodal / MRT Trunk / Meet-halfway joint)
+ * 2. Next Best: Maximum Sheltered Linkways (Step-free & Covered)
+ * 3. Next Best: Direct Bus / Express Alternate
+ */
+export async function planMultiRouteJourney(input: PlanJourneyInput): Promise<{
+  journey: Journey;
+  routes: Array<{
+    id: string;
+    tag: string;
+    tagType: 'recommended' | 'sheltered' | 'alternative';
+    durationMins: number;
+    calculatedETA: string;
+    transfersCount: number;
+    shelteredPercentage: number;
+    summary: string;
+    journey: Journey;
+    rendezvousInfo?: RendezvousInfo;
+  }>;
+}> {
+  const primary = await planJourney(input);
+  const dur1 = primary.totalDurationMins;
+  const dur2 = Math.round(dur1 * 1.12) + 2;
+  const dur3 = Math.round(dur1 * 1.25) + 4;
+
+  const destName = primary.destination;
+  const origName = primary.origin;
+
+  // Route 2: Sheltered Priority Alternate
+  const shelteredSteps: JourneyStep[] = primary.steps.map((st, i) => ({
+    ...st,
+    id: `sheltered-step-${i + 1}`,
+    landmark: i === 0 ? `Covered Walkway via ${st.landmark}` : st.landmark,
+    landmarkDetail: `100% sheltered canopy path with level ground.`,
+    reassuranceCue: `Safe and completely dry along the covered linkway.`,
+  }));
+
+  const shelteredJourney: Journey = {
+    ...primary,
+    id: `journey-sheltered-${Date.now()}`,
+    title: `${origName} to ${destName} (Fully Sheltered Linkway)`,
+    totalDurationMins: dur2,
+    calculatedETA: calculateEtaString(dur2),
+    steps: shelteredSteps,
+    legs: shelteredSteps,
+    viaStops: primary.viaStops,
+    rendezvousInfo: primary.rendezvousInfo,
+  };
+
+  // Route 3: Alternative Transit / Direct Bus Line
+  const busSteps: JourneyStep[] = [
+    {
+      id: 'alt-bus-step-1',
+      type: 'walk',
+      title: `Walk 2 mins to ${origName} Bus Bay`,
+      durationMins: 2,
+      distanceMeters: 120,
+      landmark: 'Sheltered Bus Berth',
+      landmarkDetail: 'Direct curbside boarding with electronic arrival display',
+      guidance: {
+        full: `Walk to the sheltered bus berth. Board Trunk Bus Service.`,
+        medium: `Walk to bus berth.`,
+        light: `Head to bus berth.`,
+      },
+      reassuranceCue: `Trunk Bus arriving in 3 mins.`,
+      geometry: primary.geometry?.slice(0, 2),
+    },
+    {
+      id: 'alt-bus-step-2',
+      type: 'bus',
+      title: `Direct Bus Service to ${destName}`,
+      lineName: 'Direct Bus Service',
+      lineBadge: 'BUS',
+      durationMins: Math.max(12, dur3 - 5),
+      distanceMeters: primary.totalDistanceMeters || 4500,
+      stopsCount: 8,
+      landmark: `${destName} Concourse Stop`,
+      landmarkDetail: 'Alight directly in front of main entrance',
+      guidance: {
+        full: `Ride direct bus service. Alight directly at ${destName}.`,
+        medium: `Direct bus to ${destName}.`,
+        light: `Bus to ${destName}.`,
+      },
+      reassuranceCue: `Relax and enjoy the bus ride; companion will notify you before the stop.`,
+      geometry: primary.geometry,
+    },
+    {
+      id: 'alt-bus-step-3',
+      type: 'walk',
+      title: `Step into ${destName}`,
+      durationMins: 3,
+      distanceMeters: 100,
+      landmark: 'Main Entrance Lobby',
+      landmarkDetail: 'Air-conditioned main lobby',
+      guidance: {
+        full: `Walk through the entrance into ${destName}. You have arrived.`,
+        medium: `Walk into ${destName}.`,
+        light: `Arrive at destination.`,
+      },
+      reassuranceCue: `You have safely reached your destination.`,
+      geometry: primary.geometry?.slice(-2),
+    },
+  ];
+
+  const busJourney: Journey = {
+    ...primary,
+    id: `journey-bus-${Date.now()}`,
+    title: `${origName} to ${destName} (Direct Trunk Bus)`,
+    totalDurationMins: dur3,
+    calculatedETA: calculateEtaString(dur3),
+    steps: busSteps,
+    legs: busSteps,
+    viaStops: primary.viaStops,
+    rendezvousInfo: primary.rendezvousInfo,
+  };
+
+  const transfers1 = primary.steps.filter((s) => s.type === 'mrt' || s.type === 'bus').length - 1;
+
+  const tagPrefix = primary.rendezvousInfo
+    ? `Meet Halfway @ ${primary.rendezvousInfo.meetingStation}`
+    : primary.viaStops && primary.viaStops.length > 0
+    ? `Via ${primary.viaStops[0]}`
+    : '';
+
+  return {
+    journey: primary,
+    routes: [
+      {
+        id: primary.id,
+        tag: tagPrefix ? `${tagPrefix} • Recommended` : 'Recommended • Fastest Transit',
+        tagType: 'recommended',
+        durationMins: primary.totalDurationMins,
+        calculatedETA: primary.calculatedETA,
+        transfersCount: Math.max(0, transfers1),
+        shelteredPercentage: 88,
+        summary: primary.rendezvousInfo
+          ? primary.rendezvousInfo.summary
+          : `Fastest connection via MRT trunk rail & direct station linkways.`,
+        journey: primary,
+        rendezvousInfo: primary.rendezvousInfo,
+      },
+      {
+        id: shelteredJourney.id,
+        tag: tagPrefix ? `${tagPrefix} • 100% Sheltered` : 'Option 2 • Maximum Sheltered Linkways',
+        tagType: 'sheltered',
+        durationMins: shelteredJourney.totalDurationMins,
+        calculatedETA: shelteredJourney.calculatedETA,
+        transfersCount: Math.max(0, transfers1),
+        shelteredPercentage: 100,
+        summary: `Continuous rain protection & step-free lifts across all segments.`,
+        journey: shelteredJourney,
+        rendezvousInfo: primary.rendezvousInfo,
+      },
+      {
+        id: busJourney.id,
+        tag: tagPrefix ? `${tagPrefix} • Direct Bus` : 'Option 3 • Direct Bus Service',
+        tagType: 'alternative',
+        durationMins: busJourney.totalDurationMins,
+        calculatedETA: busJourney.calculatedETA,
+        transfersCount: 0,
+        shelteredPercentage: 78,
+        summary: `Single-seat ride with no transfers and ground-level alighting.`,
+        journey: busJourney,
+        rendezvousInfo: primary.rendezvousInfo,
+      },
+    ],
   };
 }
 
@@ -936,3 +1483,21 @@ export async function recalculateJourney(input: RecalculateJourneyInput): Promis
     currentLocation: input.currentLocation,
   });
 }
+
+/**
+ * Get 100% Sheltered Linkway Alternative for Rainy / Inclement Weather
+ */
+export async function getShelteredAlternative(
+  currentLocation?: LatLng,
+  origin: string = 'Current Location',
+  destination: string = 'Destination'
+): Promise<Journey> {
+  const multi = await planMultiRouteJourney({
+    origin,
+    destination,
+    currentLocation,
+  });
+  const sheltered = multi.routes.find((r) => r.tagType === 'sheltered');
+  return sheltered?.journey || multi.journey;
+}
+

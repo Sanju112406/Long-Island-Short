@@ -26,7 +26,6 @@ interface ActiveStepCardProps {
   eta: string;
   desiredTime: string;
   isPowerSaving?: boolean;
-  persona?: 'rachel' | 'arjun' | 'lim' | 'default';
   onNextStep: () => void;
   onPrevStep: () => void;
   onSpeakInstruction: () => void;
@@ -41,7 +40,6 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
   eta,
   desiredTime,
   isPowerSaving = false,
-  persona = 'default',
   onNextStep,
   onPrevStep,
   onSpeakInstruction,
@@ -52,13 +50,13 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
   const getLandmarkIcon = () => {
     switch (step.landmarkIconName) {
       case 'store':
-        return <Store className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
+        return <Store className="w-4 h-4 text-red-600 dark:text-red-400" />;
       case 'coffee':
         return <Coffee className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
       case 'building':
         return <Building className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
       default:
-        return <MapPin className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
+        return <MapPin className="w-4 h-4 text-red-600 dark:text-red-400" />;
     }
   };
 
@@ -68,9 +66,9 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
         return <Bus className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />;
       case 'mrt':
       case 'transfer':
-        return <Train className="w-4 h-4 text-purple-600 dark:text-purple-400" />;
+        return <Train className="w-4 h-4 text-red-600 dark:text-red-400" />;
       default:
-        return <Footprints className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
+        return <Footprints className="w-4 h-4 text-red-600 dark:text-red-400" />;
     }
   };
 
@@ -89,8 +87,8 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
           <span
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
               isPowerSaving
-                ? 'bg-neutral-900 text-emerald-400 border border-neutral-800'
-                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                ? 'bg-neutral-900 text-red-400 border border-neutral-800'
+                : 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300'
             }`}
           >
             {getTransportIcon()}
@@ -129,7 +127,7 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
           }`}
         >
           <div className="flex items-start gap-2.5">
-            <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 mt-0.5 shrink-0">
+            <span className="p-1 rounded-lg bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 mt-0.5 shrink-0">
               <Navigation className="w-4 h-4" />
             </span>
             <div className="flex-1">
@@ -137,7 +135,7 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
                 {instructionText}
               </p>
               {step.reassuranceCue && familiarity !== 'light' && (
-                <p className="mt-1.5 text-xs text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <p className="mt-1.5 text-xs text-red-700 dark:text-red-400 font-medium flex items-center gap-1">
                   <CheckCircle className="w-3.5 h-3.5 shrink-0" />
                   {step.reassuranceCue}
                 </p>
@@ -152,8 +150,8 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
               aria-label="Listen to Eyes Up voice guidance"
               className={`p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
                 isSpeaking
-                  ? 'bg-emerald-600 text-white animate-pulse'
-                  : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-slate-600 shadow-xs'
+                  ? 'bg-red-600 text-white animate-pulse'
+                  : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-red-50 hover:text-red-700 dark:hover:bg-slate-600 shadow-xs'
               }`}
             >
               <Volume2 className="w-4 h-4" />
@@ -186,10 +184,9 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
         </div>
       </div>
 
-      {/* Real-time LTA Transit & Persona Telemetry */}
+      {/* Real-time LTA Transit Telemetry */}
       <LiveTransitTelemetryBadge
         stepType={step.type}
-        persona={persona}
         isPowerSaving={isPowerSaving}
       />
 
@@ -219,8 +216,8 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
             onClick={onNextStep}
             className={`px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1 shadow-xs transition-all cursor-pointer ${
               stepIndex === totalSteps - 1
-                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                : 'bg-slate-900 text-white dark:bg-emerald-500 dark:text-black hover:bg-slate-800'
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-slate-900 text-white dark:bg-red-600 dark:text-white hover:bg-slate-800'
             }`}
           >
             <span>{stepIndex === totalSteps - 1 ? 'Finish Journey' : 'Next Step'}</span>

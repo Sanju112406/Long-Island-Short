@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -25,11 +26,11 @@ import {
   getRouteById,
   SINGAPORE_ROUTES,
   planJourney,
+  planMultiRouteJourney,
   recalculateJourney,
-  computeArrivalStatus,
+  getShelteredAlternative,
 } from "./server/services/routingService";
 import { assessJourneyImpact } from "./server/services/journeyImpactEngine";
-import { createOrUpdateShare, getShare } from "./server/services/shareService";
 import {
   findNearestLandmark,
   calculateDistanceMeters,
@@ -40,7 +41,7 @@ import {
   getOneMapPublicTransportRoute,
   getOneMapEmail,
 } from "./server/services/oneMapService";
-import { askEyesUpCompanion, narrateStepGuidance } from "./server/services/geminiService";
+import { askEyesUpCompanion } from "./server/services/geminiService";
 import {
   runFullDiagnostic,
   testGeminiConnectivity,
@@ -273,76 +274,38 @@ async function startServer() {
     }
   });
 
-  // Dynamic Journey Planner (OneMap Transit + Deterministic Multimodal Fallback)
+  // Dynamic Journey Planner (OneMap Transit + Deterministic Multimodal Fallback with 3 Route Options)
   app.post("/api/journey/plan", async (req, res) => {
     try {
-      const { origin, destination, preferences, currentLocation, desiredArrivalTime } = req.body;
-      // Origin can be blank if a live GPS currentLocation is supplied instead —
-      // planJourney() already prefers currentLocation over the origin string.
-      if (!destination || (!origin && !currentLocation)) {
-        return res.status(400).json({
-          error: "Destination is required, along with either an origin or a live currentLocation",
-        });
-      }
-      const journey = await planJourney({
+      const {
         origin,
         destination,
+        viaStops,
+        secondaryOrigin,
+        preferences,
+        currentLocation,
+        desiredArrivalTime,
+      } = req.body;
+      if (!origin || !destination) {
+        return res.status(400).json({ error: "Origin and destination are required" });
+      }
+      const multiResult = await planMultiRouteJourney({
+        origin,
+        destination,
+        viaStops,
+        secondaryOrigin,
         preferences,
         currentLocation,
         desiredArrivalTime,
       });
-      res.json(journey);
+      // Response includes top-level journey fields + routes array for multi-choice UI
+      res.json({
+        ...multiResult.journey,
+        routes: multiResult.routes,
+        journey: multiResult.journey,
+      });
     } catch (err: any) {
       res.status(500).json({ error: "Failed to plan journey", details: err?.message });
-    }
-  });
-
-  // Compare a commuter's desired arrival time against the calculated ETA for a
-  // genuine on-time/late status, instead of an always-"On schedule" placeholder.
-  app.get("/api/journey/arrival-status", (req, res) => {
-    try {
-      const desiredArrivalTime = typeof req.query.desiredArrivalTime === "string" ? req.query.desiredArrivalTime : undefined;
-      const calculatedETA = typeof req.query.calculatedETA === "string" ? req.query.calculatedETA : undefined;
-      res.json(computeArrivalStatus(desiredArrivalTime, calculatedETA));
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to compute arrival status", details: err?.message });
-    }
-  });
-
-  // Push the sender's live journey progress to a shareable ID (no auth, no GPS —
-  // only ETA/progress/status, matching the app's stated privacy guarantee).
-  app.post("/api/share/update", (req, res) => {
-    try {
-      const { shareId, recipientName, destination, currentETA, progressPercentage, statusText, isArrived } = req.body;
-      if (!shareId) {
-        return res.status(400).json({ error: "shareId is required" });
-      }
-      const record = createOrUpdateShare(shareId, {
-        recipientName: recipientName || "Friend",
-        destination: destination || "",
-        currentETA: currentETA || "",
-        progressPercentage: typeof progressPercentage === "number" ? progressPercentage : 0,
-        statusText: statusText || "On schedule",
-        lastUpdated: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        isArrived: !!isArrived,
-      });
-      res.json(record);
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to update share", details: err?.message });
-    }
-  });
-
-  // Public, unauthenticated read for anyone with the share link — what a friend's
-  // browser polls. Intentionally exposes no GPS/coordinates, only ETA and progress.
-  app.get("/api/share/:shareId", (req, res) => {
-    try {
-      const record = getShare(req.params.shareId);
-      if (!record) {
-        return res.status(404).json({ error: "This share link has expired or does not exist." });
-      }
-      res.json(record);
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to fetch share", details: err?.message });
     }
   });
 
@@ -487,7 +450,6 @@ async function startServer() {
         isDisrupted,
         isMissedStop,
         journeyState,
-        conversationHistory,
         currentLocation,
       } = req.body;
 
@@ -499,7 +461,6 @@ async function startServer() {
         isDisrupted,
         isMissedStop,
         journeyState,
-        conversationHistory,
         currentLocation,
       });
 
@@ -510,28 +471,39 @@ async function startServer() {
         emotionalStateDetected: result.emotionalStateDetected,
         agentAction: result.agentAction,
         suggestedActionLabel: result.suggestedActionLabel,
+        updatedJourney: result.updatedJourney,
       });
     } catch (err: any) {
       console.warn("Companion chat failed, falling back to local companion:", err?.message);
-      const { question, currentStep, familiarityMode, isMissedStop, isDisrupted } = req.body;
+      const { question, currentStep, familiarityMode, isMissedStop, isDisrupted, journeyState, currentLocation } = req.body;
+      const qLower = (question || "").toLowerCase();
+
+      let updatedJourney: any = undefined;
+      if (
+        qLower.includes("rain") ||
+        qLower.includes("shelter") ||
+        qLower.includes("weather") ||
+        qLower.includes("umbrella") ||
+        qLower.includes("wet") ||
+        qLower.includes("covered")
+      ) {
+        try {
+          updatedJourney = await getShelteredAlternative(
+            currentLocation,
+            journeyState?.origin || "Toa Payoh Central",
+            journeyState?.destination || "Bugis Junction"
+          );
+        } catch (e) {
+          console.warn("Could not generate sheltered fallback route:", e);
+        }
+      }
+
       return res.json({
         reply: getRuleBasedResponse(question, currentStep, familiarityMode, isMissedStop, isDisrupted),
         source: "fallback",
+        agentAction: updatedJourney ? "reroute_sheltered" : undefined,
+        updatedJourney,
       });
-    }
-  });
-
-  // Rephrase deterministic step guidance naturally via Gemini (same facts, varied wording)
-  app.post("/api/companion/narrate-step", async (req, res) => {
-    try {
-      const { step, familiarityMode, persona } = req.body;
-      if (!step || !step.guidance) {
-        return res.status(400).json({ error: "A valid step with guidance is required" });
-      }
-      const result = await narrateStepGuidance({ step, familiarityMode, persona });
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to narrate step", details: err?.message });
     }
   });
 
@@ -543,7 +515,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = fs.existsSync(path.join(__dirname, "index.html"))
+      ? __dirname
+      : path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
@@ -570,6 +544,18 @@ function getRuleBasedResponse(
 
   if (isDisrupted) {
     return "There's an unexpected signal delay ahead at Bugis. Your current route would arrive at 9:07 AM, but I found an alternative route arriving at 8:49 AM. Tap to switch whenever you're ready.";
+  }
+
+  if (
+    q.includes("rain") ||
+    q.includes("shelter") ||
+    q.includes("weather") ||
+    q.includes("umbrella") ||
+    q.includes("wet") ||
+    q.includes("dry") ||
+    q.includes("covered")
+  ) {
+    return "I've switched your active route to 100% sheltered linkways and underground concourses to keep you completely dry. Follow the covered canopy straight ahead.";
   }
 
   if (q.includes("right way") || q.includes("correct way") || q.includes("wrong way")) {

@@ -13,8 +13,6 @@ interface VoiceCompanionViewProps {
   currentStep: JourneyStep;
   familiarity: FamiliarityLevel;
   isPowerSaving?: boolean;
-  persona?: 'rachel' | 'arjun' | 'lim' | 'default';
-  onSelectPersona?: (persona: 'rachel' | 'arjun' | 'lim' | 'default') => void;
 }
 
 export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
@@ -28,46 +26,17 @@ export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
   currentStep,
   familiarity,
   isPowerSaving = false,
-  persona = 'default',
-  onSelectPersona,
 }) => {
   const [inputText, setInputText] = useState('');
 
-  const getQuickQuestions = () => {
-    if (persona === 'lim') {
-      return [
-        "I'm scared and lost, where is the lift?",
-        'Is the lift at this station working?',
-        'Is this path completely step-free?',
-        'Am I going the right way?',
-      ];
-    }
-    if (persona === 'arjun') {
-      return [
-        "It's pouring rain, where is the sheltered linkway?",
-        'Can I take my folded bike on this train?',
-        'Is the platform crowded right now?',
-        'What is the next transfer point?',
-      ];
-    }
-    if (persona === 'rachel') {
-      return [
-        "I'm panicking, am I going to be late?",
-        'I missed my stop, reroute immediately',
-        'Am I still on track for 8:45 AM?',
-        'Give me a 1-sentence status update.',
-      ];
-    }
-    return [
-      "I'm panicking, I missed my stop!",
-      "I can't find my way, where am I?",
-      'Am I going the right way?',
-      'Do I turn here?',
-      'Am I going to be late?',
-    ];
-  };
-
-  const quickQuestions = getQuickQuestions();
+  const quickQuestions = [
+    "I'm panicking, I missed my stop!",
+    "I can't find my way, where am I?",
+    'Am I going the right way?',
+    'Do I turn here?',
+    'Am I going to be late?',
+    'Where is the sheltered linkway?',
+  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,14 +51,9 @@ export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
       {/* Header */}
       <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-start justify-between">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-bold mb-1">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 text-[11px] font-bold mb-1">
             <Sparkles className="w-3 h-3" />
             <span>Eyes-Up AI Companion</span>
-            {persona !== 'default' && (
-              <span className="ml-1 text-[10px] bg-white/70 dark:bg-slate-900/80 px-1.5 rounded-full capitalize">
-                {persona === 'lim' ? 'Mdm Lim' : persona}
-              </span>
-            )}
           </div>
           <h2 className="text-base font-black text-slate-900 dark:text-white">
             Hands-Free Voice Guidance
@@ -98,28 +62,14 @@ export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
             Put your phone away. Ask questions naturally about landmarks & directions.
           </p>
         </div>
-
-        {onSelectPersona && (
-          <select
-            aria-label="Select Commuter Persona"
-            value={persona}
-            onChange={(e) => onSelectPersona(e.target.value as any)}
-            className="text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-800 dark:text-slate-200 cursor-pointer"
-          >
-            <option value="default">Standard</option>
-            <option value="rachel">Rachel</option>
-            <option value="arjun">Arjun</option>
-            <option value="lim">Mdm Lim</option>
-          </select>
-        )}
       </div>
 
-      {/* Main Centered Voice Orb matching architecture diagram Screen 3 */}
-      <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-center space-y-3 shadow-xs">
+      {/* Main Centered Voice Orb */}
+      <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center space-y-3 shadow-xs">
         <div className="relative">
           {/* Animated Glow Rings when Listening / Speaking */}
           {(isListening || isSpeaking || isThinking) && (
-            <div className="absolute -inset-3 rounded-full bg-emerald-500/20 animate-ping duration-1000" />
+            <div className="absolute -inset-3 rounded-full bg-red-500/20 animate-ping duration-1000" />
           )}
 
           <button
@@ -130,10 +80,10 @@ export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
               isListening
                 ? 'bg-rose-500 text-white scale-110 ring-4 ring-rose-300 dark:ring-rose-900'
                 : isSpeaking
-                ? 'bg-emerald-600 text-white scale-105 ring-4 ring-emerald-300 dark:ring-emerald-900'
+                ? 'bg-red-600 text-white scale-105 ring-4 ring-red-300 dark:ring-red-900'
                 : isThinking
                 ? 'bg-amber-500 text-white animate-spin'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-105'
+                : 'bg-red-600 hover:bg-red-700 text-white hover:scale-105'
             }`}
           >
             {isListening ? (
@@ -164,51 +114,14 @@ export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
 
         {/* Animated Waveform Visualizer */}
         <div className="flex items-center gap-1 h-6">
-          <div className={`w-1 rounded-full bg-emerald-500 ${isListening || isSpeaking ? 'animate-wave-bar-1' : 'h-1.5'}`} />
-          <div className={`w-1 rounded-full bg-emerald-500 ${isListening || isSpeaking ? 'animate-wave-bar-2' : 'h-3'}`} />
-          <div className={`w-1 rounded-full bg-emerald-500 ${isListening || isSpeaking ? 'animate-wave-bar-3' : 'h-5'}`} />
-          <div className={`w-1 rounded-full bg-emerald-500 ${isListening || isSpeaking ? 'animate-wave-bar-4' : 'h-2'}`} />
-          <div className={`w-1 rounded-full bg-emerald-500 ${isListening || isSpeaking ? 'animate-wave-bar-2' : 'h-4'}`} />
-          <div className={`w-1 rounded-full bg-emerald-500 ${isListening || isSpeaking ? 'animate-wave-bar-1' : 'h-1.5'}`} />
+          <div className={`w-1 rounded-full bg-red-500 ${isListening || isSpeaking ? 'animate-wave-bar-1' : 'h-1.5'}`} />
+          <div className={`w-1 rounded-full bg-red-500 ${isListening || isSpeaking ? 'animate-wave-bar-2' : 'h-3'}`} />
+          <div className={`w-1 rounded-full bg-red-500 ${isListening || isSpeaking ? 'animate-wave-bar-3' : 'h-5'}`} />
+          <div className={`w-1 rounded-full bg-red-500 ${isListening || isSpeaking ? 'animate-wave-bar-4' : 'h-2'}`} />
+          <div className={`w-1 rounded-full bg-red-500 ${isListening || isSpeaking ? 'animate-wave-bar-2' : 'h-4'}`} />
+          <div className={`w-1 rounded-full bg-red-500 ${isListening || isSpeaking ? 'animate-wave-bar-1' : 'h-1.5'}`} />
         </div>
       </div>
-
-      {/* Quick Prompt Chips (Section 4 Screen 3 in diagram) */}
-      <div className="space-y-1.5">
-        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-          Quick Ask Chips:
-        </span>
-        <div className="grid grid-cols-2 gap-1.5">
-          {quickQuestions.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => onSendMessage(q)}
-              className="p-2 text-left rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:border-emerald-500 transition-all cursor-pointer leading-tight shadow-2xs"
-            >
-              "{q}"
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Text Input Option */}
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          id="companion-text-input"
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="Type question to companion..."
-          className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        />
-        <button
-          type="submit"
-          className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
-        >
-          <Send className="w-3.5 h-3.5" />
-        </button>
-      </form>
 
       {/* Conversation History */}
       <div className="space-y-2 pt-1">
@@ -221,7 +134,7 @@ export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
               key={msg.id}
               className={`p-2.5 rounded-2xl text-xs space-y-1 ${
                 msg.sender === 'user'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/50 text-emerald-900 dark:text-emerald-200 ml-6'
+                  ? 'bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800/50 text-red-900 dark:text-red-200 ml-6'
                   : 'bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 mr-6'
               }`}
             >
@@ -234,13 +147,50 @@ export const VoiceCompanionView: React.FC<VoiceCompanionViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onReplayAudio(msg.text)}
-                  className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer pt-0.5"
+                  className="inline-flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400 font-bold hover:underline cursor-pointer pt-0.5"
                 >
                   <Volume2 className="w-3 h-3" />
                   <span>Replay voice</span>
                 </button>
               )}
             </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Text Input Option */}
+      <form onSubmit={handleSubmit} className="flex gap-2">
+        <input
+          id="companion-text-input"
+          type="text"
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          placeholder="Type question to companion..."
+          className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+        />
+        <button
+          type="submit"
+          className="px-3.5 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors flex items-center gap-1 cursor-pointer"
+        >
+          <Send className="w-3.5 h-3.5" />
+        </button>
+      </form>
+
+      {/* Quick Prompt Chips (Placed below the actual chat) */}
+      <div className="space-y-1.5 pt-1">
+        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          Quick Ask Chips:
+        </span>
+        <div className="grid grid-cols-2 gap-1.5">
+          {quickQuestions.map((q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => onSendMessage(q)}
+              className="p-2 text-left rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:border-red-500 transition-all cursor-pointer leading-tight shadow-2xs"
+            >
+              "{q}"
+            </button>
           ))}
         </div>
       </div>

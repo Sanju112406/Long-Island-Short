@@ -23,6 +23,85 @@ class SpeechService {
     return this.isMuted;
   }
 
+  private cleanTextForSpeech(text: string): string {
+    return text
+      .replace(/[*_#`~]/g, '') // remove markdown symbols
+      .replace(/\bMRT\b/g, 'M R T')
+      .replace(/\bLTA\b/g, 'L T A')
+      .replace(/\bSMRT\b/g, 'S M R T')
+      .replace(/\bSGH\b/g, 'Singapore General Hospital')
+      .replace(/\bBlk\b/g, 'Block')
+      .replace(/\bAve\b/g, 'Avenue')
+      .replace(/\bSt\b/g, 'Street')
+      .replace(/\bRd\b/g, 'Road')
+      .replace(/\bCtrl\b/g, 'Central')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private selectBestHumanVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+    if (!voices || voices.length === 0) return null;
+
+    // Filter out known legacy robotic / novelty synthesizers
+    const roboticNames = [
+      'albert', 'bad news', 'bahh', 'bells', 'boing', 'cellos', 'deranged',
+      'good news', 'hysterical', 'pipe organ', 'trinoids', 'whisper', 'zarvox',
+      'fred', 'junior', 'ralph', 'kathy', 'vicki', 'bruce', 'agnes'
+    ];
+
+    const eligibleVoices = voices.filter(
+      (v) => !roboticNames.some((r) => v.name.toLowerCase().includes(r))
+    );
+
+    // Tier 1: Premium / Natural / Enhanced Neural voices (ChatGPT-style warmth)
+    const tier1 = eligibleVoices.find((v) => {
+      const n = v.name.toLowerCase();
+      return (
+        (n.includes('natural') || n.includes('premium') || n.includes('enhanced') || n.includes('neural')) &&
+        (v.lang.startsWith('en') || n.includes('english'))
+      );
+    });
+    if (tier1) return tier1;
+
+    // Tier 2: Apple Siri / Samantha Enhanced / Ava / Serena / Zoe
+    const tier2 = eligibleVoices.find((v) => {
+      const n = v.name.toLowerCase();
+      return (
+        n.includes('samantha') ||
+        n.includes('siri') ||
+        n.includes('ava') ||
+        n.includes('serena') ||
+        n.includes('zoe') ||
+        n.includes('karen') ||
+        n.includes('daniel')
+      );
+    });
+    if (tier2) return tier2;
+
+    // Tier 3: Google Chrome Natural Neural (Google UK English Female / Google US English)
+    const tier3 = eligibleVoices.find((v) => {
+      const n = v.name.toLowerCase();
+      return (
+        (n.includes('google uk english female') || n.includes('google us english') || n.includes('google english')) &&
+        v.lang.startsWith('en')
+      );
+    });
+    if (tier3) return tier3;
+
+    // Tier 4: Singapore English or UK/US English
+    const tier4 = eligibleVoices.find(
+      (v) =>
+        v.lang.includes('en-SG') ||
+        v.name.includes('Singapore') ||
+        v.lang.includes('en-GB') ||
+        v.lang.includes('en-US') ||
+        v.lang.startsWith('en')
+    );
+    if (tier4) return tier4;
+
+    return eligibleVoices[0] || null;
+  }
+
   public speak(
     text: string,
     options?: {
@@ -39,22 +118,22 @@ class SpeechService {
     try {
       this.synth.cancel(); // Stop prior speech
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.96; // Calm, conversational pace
-      utterance.pitch = 1.02; // Warm, friendly tone
+      const cleanText = this.cleanTextForSpeech(text);
+      if (!cleanText) {
+        options?.onEnd?.();
+        return;
+      }
 
-      // Pick Singapore or British / Australian / English voice if available
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      // ChatGPT-like natural conversational rate & pitch
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
       const voices = this.synth.getVoices();
-      const preferredVoice = voices.find(
-        (v) =>
-          v.lang.includes('en-SG') ||
-          v.name.includes('Singapore') ||
-          v.lang.includes('en-GB') ||
-          v.lang.includes('en-AU') ||
-          v.lang.includes('en-US')
-      );
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
+      const humanVoice = this.selectBestHumanVoice(voices);
+      if (humanVoice) {
+        utterance.voice = humanVoice;
       }
 
       utterance.onstart = () => {

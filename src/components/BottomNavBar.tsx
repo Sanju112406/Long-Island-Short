@@ -42,13 +42,13 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
               onClick={() => onSelectTab(tab.id)}
               className={`flex flex-col items-center justify-center py-1 px-3 rounded-2xl transition-all cursor-pointer ${
                 isActive
-                  ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105'
+                  ? 'text-red-600 dark:text-red-400 font-bold scale-105'
                   : 'hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <div
                 className={`p-1.5 rounded-xl transition-colors ${
-                  isActive ? 'bg-emerald-50 dark:bg-emerald-950/60' : ''
+                  isActive ? 'bg-red-50 dark:bg-red-950/60' : ''
                 }`}
               >
                 {tab.icon}

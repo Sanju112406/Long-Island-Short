@@ -16,6 +16,7 @@ import { fetchSingaporeWeather, WeatherNowcast } from './weatherService';
 import {
   planJourney,
   recalculateJourney,
+  getShelteredAlternative,
   SINGAPORE_ROUTES,
 } from './routingService';
 import {
@@ -63,9 +64,10 @@ export interface CompanionAgentResponse {
   source: 'gemini' | 'gemini_tool_calling' | 'deterministic_engine';
   personaUsed: string;
   emotionalStateDetected?: 'panicked' | 'disoriented' | 'hurried' | 'calm';
-  agentAction?: 'calm_and_ground' | 'reroute_active' | 'locate_lift' | 'reassure_ontime' | 'navigate';
+  agentAction?: 'calm_and_ground' | 'reroute_active' | 'locate_lift' | 'reassure_ontime' | 'navigate' | 'reroute_sheltered';
   suggestedActionLabel?: string;
   toolCallsExecuted?: string[];
+  updatedJourney?: Journey;
 }
 
 // 12 Structured Tool Declarations for Gemini Agent
@@ -172,6 +174,20 @@ export const EYES_UP_TOOL_DECLARATIONS = [
           properties: {
             avoidLine: { type: 'string', description: 'Line code to avoid, e.g. DTL' },
             reason: { type: 'string' },
+          },
+        },
+      },
+      {
+        name: 'changeToShelteredRoute',
+        description:
+          'Switches the active journey to a 100% sheltered, rain-protected route with covered linkways, underpasses, and lifts across Singapore.',
+        parameters: {
+          type: 'object',
+          properties: {
+            reason: {
+              type: 'string',
+              description: 'Reason for sheltered route (e.g., raining, storm, hot sun, stroller)',
+            },
           },
         },
       },
@@ -322,6 +338,17 @@ export async function executeDeterministicTool(
       });
     }
 
+    case 'changeToShelteredRoute': {
+      const orig = context.journeyState?.origin || context.journey?.origin || 'Toa Payoh Central';
+      const dest = context.journeyState?.destination || context.journey?.destination || 'Bugis Junction';
+      const shelteredJourney = await getShelteredAlternative(context.currentLocation, orig, dest);
+      return {
+        status: 'route_switched_sheltered',
+        message: 'Active journey switched to 100% covered linkways and rain-sheltered underpasses.',
+        updatedJourney: shelteredJourney,
+      };
+    }
+
     default:
       return { status: 'unknown_tool', name };
   }
@@ -444,6 +471,8 @@ Current Context:
         },
       });
 
+      let updatedJourney: Journey | undefined = undefined;
+
       // Check if model requested tool call(s)
       // Use the raw content part (not response.functionCalls) so thoughtSignature
       // survives the round-trip — Gemini 3.x rejects function replies without it.
@@ -454,6 +483,9 @@ Current Context:
         if (toolName) {
           executedTools.push(toolName);
           const toolResult = await executeDeterministicTool(toolName, toolCall.args, params);
+          if (toolResult?.updatedJourney) {
+            updatedJourney = toolResult.updatedJourney;
+          }
 
         // Second turn: pass tool response back to Gemini for conversational synthesis
         const followup = await generateWithModelFallback({
@@ -490,8 +522,9 @@ Current Context:
               source: 'gemini_tool_calling',
               personaUsed: persona,
               emotionalStateDetected: isPanicked ? 'panicked' : 'calm',
-              agentAction: isPanicked ? 'calm_and_ground' : 'navigate',
+              agentAction: updatedJourney ? 'reroute_sheltered' : (isPanicked ? 'calm_and_ground' : 'navigate'),
               toolCallsExecuted: executedTools,
+              updatedJourney,
             };
           }
         }
@@ -499,13 +532,27 @@ Current Context:
 
       const directText = response.text?.trim();
       if (directText) {
+        // If the model gave direct text for a weather query, ensure active sheltered route is attached
+        if (
+          qLower.includes('rain') ||
+          qLower.includes('shelter') ||
+          qLower.includes('weather') ||
+          qLower.includes('umbrella') ||
+          qLower.includes('wet')
+        ) {
+          const orig = params.journeyState?.origin || params.journey?.origin || 'Toa Payoh Central';
+          const dest = params.journeyState?.destination || params.journey?.destination || 'Bugis Junction';
+          updatedJourney = await getShelteredAlternative(params.currentLocation, orig, dest);
+        }
+
         return {
           reply: directText,
           source: 'gemini',
           personaUsed: persona,
           emotionalStateDetected: isPanicked ? 'panicked' : 'calm',
-          agentAction: isPanicked ? 'calm_and_ground' : 'navigate',
+          agentAction: updatedJourney ? 'reroute_sheltered' : (isPanicked ? 'calm_and_ground' : 'navigate'),
           toolCallsExecuted: executedTools,
+          updatedJourney,
         };
       }
     } catch (err) {
@@ -515,6 +562,30 @@ Current Context:
 
   // Graceful deterministic fallback engine (Guarantees zero-failure demo even if offline/unkeyed)
   const landmark = params.currentStep?.landmark || 'the covered linkway';
+
+  // Weather & Sheltered Route Reroute Query
+  if (
+    qLower.includes('rain') ||
+    qLower.includes('shelter') ||
+    qLower.includes('weather') ||
+    qLower.includes('umbrella') ||
+    qLower.includes('wet') ||
+    qLower.includes('dry') ||
+    qLower.includes('covered')
+  ) {
+    const orig = params.journeyState?.origin || params.journey?.origin || 'Toa Payoh Central';
+    const dest = params.journeyState?.destination || params.journey?.destination || 'Bugis Junction';
+    const shelteredJourney = await getShelteredAlternative(params.currentLocation, orig, dest);
+    return {
+      reply: `I've updated your active route to 100% sheltered linkways and underground concourses to keep you completely dry. Follow the covered canopy straight ahead.`,
+      source: 'deterministic_engine',
+      personaUsed: persona,
+      emotionalStateDetected: 'calm',
+      agentAction: 'reroute_sheltered',
+      suggestedActionLabel: 'Sheltered Route Active',
+      updatedJourney: shelteredJourney,
+    };
+  }
 
   if (isPanicked || qLower.includes('panic') || qLower.includes('lost') || qLower.includes("can't find")) {
     if (persona === 'lim') {

@@ -10,8 +10,6 @@ interface SimulationBarProps {
   isDisruptionActive: boolean;
   isOffRouteActive?: boolean;
   isPowerSaving?: boolean;
-  activePersona?: 'rachel' | 'arjun' | 'lim' | 'default';
-  onSelectPersona?: (persona: 'rachel' | 'arjun' | 'lim' | 'default') => void;
 }
 
 export const SimulationBar: React.FC<SimulationBarProps> = ({
@@ -23,8 +21,6 @@ export const SimulationBar: React.FC<SimulationBarProps> = ({
   isDisruptionActive,
   isOffRouteActive = false,
   isPowerSaving = false,
-  activePersona = 'default',
-  onSelectPersona,
 }) => {
   return (
     <div
@@ -39,21 +35,18 @@ export const SimulationBar: React.FC<SimulationBarProps> = ({
         <div className="flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-            Journey Recovery & Commuter Scenarios
+            Journey Simulation & Recovery
           </span>
         </div>
-        {(isMissedStopActive || isDisruptionActive || isOffRouteActive || activePersona !== 'default') && (
+        {(isMissedStopActive || isDisruptionActive || isOffRouteActive) && (
           <button
             id="reset-scenarios-button"
             type="button"
-            onClick={() => {
-              onResetScenarios();
-              if (onSelectPersona) onSelectPersona('default');
-            }}
+            onClick={onResetScenarios}
             className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 cursor-pointer"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Reset Demo</span>
+            <span>Reset</span>
           </button>
         )}
       </div>
@@ -108,57 +101,6 @@ export const SimulationBar: React.FC<SimulationBarProps> = ({
           </span>
         </button>
       </div>
-
-      {/* Persona Scenario Switcher */}
-      {onSelectPersona && (
-        <div className="pt-1.5 border-t border-slate-200/80 dark:border-slate-800/80">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-              Live Persona Adaptivity (LTA + AI):
-            </span>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5 text-center">
-            <button
-              type="button"
-              onClick={() => onSelectPersona('rachel')}
-              className={`p-1.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                activePersona === 'rachel'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-emerald-500'
-              }`}
-            >
-              Rachel
-              <span className="block text-[9px] font-normal opacity-85">1-line / buffer</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onSelectPersona('arjun')}
-              className={`p-1.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                activePersona === 'arjun'
-                  ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-sky-500'
-              }`}
-            >
-              Arjun
-              <span className="block text-[9px] font-normal opacity-85">Cyclist / PCN</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onSelectPersona('lim')}
-              className={`p-1.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                activePersona === 'lim'
-                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-amber-500'
-              }`}
-            >
-              Mdm Lim
-              <span className="block text-[9px] font-normal opacity-85">Lifts / step-free</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

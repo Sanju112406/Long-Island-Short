@@ -5,13 +5,11 @@ import { TransportType } from '../types';
 
 interface LiveTransitTelemetryProps {
   stepType: TransportType;
-  persona?: 'rachel' | 'arjun' | 'lim' | 'default';
   isPowerSaving?: boolean;
 }
 
 export const LiveTransitTelemetryBadge: React.FC<LiveTransitTelemetryProps> = ({
   stepType,
-  persona = 'default',
   isPowerSaving = false,
 }) => {
   const [busData, setBusData] = useState<{
@@ -48,19 +46,18 @@ export const LiveTransitTelemetryBadge: React.FC<LiveTransitTelemetryProps> = ({
         .catch(() => {});
     }
 
-    // Fetch LTA Facilities Maintenance (especially vital for Mdm Lim)
-    if (persona === 'lim' || stepType === 'mrt') {
+    // Fetch LTA Facilities Maintenance
+    if (stepType === 'mrt') {
       fetch('/api/lta/facilities-maintenance')
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (!isMounted) return;
           const fac = data?.facilities || [];
-          // Check if key station has maintenance
           const match = fac.find((f: any) => f.stationCode === 'EW16' || f.stationCode === 'EW5');
           if (match) {
             setLiftStatus({
               liftUnderMaintenance: true,
-              notice: `${match.stationName}: ${match.liftDesc} is under maintenance. Use Lift L2.`,
+              notice: `${match.stationName}: ${match.liftDesc} is under maintenance. Use alternative lift.`,
             });
           } else {
             setLiftStatus({
@@ -86,7 +83,7 @@ export const LiveTransitTelemetryBadge: React.FC<LiveTransitTelemetryProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [stepType, persona]);
+  }, [stepType]);
 
   if (stepType === 'bus' && busData) {
     return (
@@ -118,82 +115,34 @@ export const LiveTransitTelemetryBadge: React.FC<LiveTransitTelemetryProps> = ({
           </div>
         </div>
         <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-bold shrink-0">
-          LTA v3
+          LTA DataMall
         </span>
       </div>
     );
   }
 
-  if (persona === 'lim') {
+  if (stepType === 'mrt') {
     return (
       <div
         className={`p-2.5 rounded-xl border flex items-center justify-between text-xs mt-2.5 transition-all ${
           liftStatus.liftUnderMaintenance
             ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 text-amber-900 dark:text-amber-200'
+            : isPowerSaving
+            ? 'bg-neutral-900 border-neutral-800 text-neutral-300'
             : 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200/70 dark:border-emerald-900/40 text-slate-800 dark:text-slate-200'
         }`}
       >
         <div className="flex items-center gap-2">
-          <Accessibility className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <Train className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <div>
-            <span className="font-bold">Mdm Lim Accessibility Monitor</span>
+            <span className="font-bold">MRT Station Telemetry</span>
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
-              {liftStatus.notice || 'All station lifts operating normally.'}
+              {liftStatus.notice || 'Station operating normally.'}
             </p>
           </div>
         </div>
         <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
           LTA Facilities
-        </span>
-      </div>
-    );
-  }
-
-  if (persona === 'rachel') {
-    return (
-      <div
-        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs mt-2.5 transition-all ${
-          isPowerSaving
-            ? 'bg-neutral-900 border-neutral-800 text-neutral-300'
-            : 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200/70 dark:border-emerald-900/40 text-slate-800 dark:text-slate-200'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <div>
-            <span className="font-bold">Rachel Schedule Lock: 27 min meeting buffer</span>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">
-              EWL running on time. Voice companion in minimal interruption mode.
-            </p>
-          </div>
-        </div>
-        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
-          EWL Live
-        </span>
-      </div>
-    );
-  }
-
-  if (persona === 'arjun') {
-    return (
-      <div
-        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs mt-2.5 transition-all ${
-          isPowerSaving
-            ? 'bg-neutral-900 border-neutral-800 text-neutral-300'
-            : 'bg-sky-50/70 dark:bg-sky-950/30 border-sky-200/70 dark:border-sky-900/40 text-slate-800 dark:text-slate-200'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-          <div>
-            <span className="font-bold">Arjun Multi-Modal: PCN & Folding Bike Permitted</span>
-            <p className="text-[10px] text-slate-600 dark:text-slate-400">
-              Sheltered linkways connect Oasis Terraces to MRT. Low platform crowding.
-            </p>
-          </div>
-        </div>
-        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300 font-bold shrink-0">
-          Multi-modal
         </span>
       </div>
     );
