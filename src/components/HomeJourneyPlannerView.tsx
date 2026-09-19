@@ -20,6 +20,8 @@ import {
   Users,
   Route,
   X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { getDefaultLiveTargetTime } from '../utils/timeUtils';
 import { Journey, RouteOption } from '../types';
@@ -67,6 +69,7 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
     isRaining: boolean;
     advice: string;
   } | null>(null);
+  const [isWeatherExpanded, setIsWeatherExpanded] = useState(false);
 
   useEffect(() => {
     fetch('/api/weather/nowcast?area=Central')
@@ -239,27 +242,93 @@ export const HomeJourneyPlannerView: React.FC<HomeJourneyPlannerViewProps> = ({
 
   return (
     <div id="home-journey-planner-view" className="p-4 space-y-4 animate-in fade-in duration-200">
-      {/* Weather Header Badge (data.gov.sg real-time) */}
+      {/* Weather Header Badge (data.gov.sg real-time, clickable to expand full message) */}
       {weather && (
-        <div className="p-3 rounded-2xl bg-red-50/70 dark:bg-red-950/40 border border-red-200/80 dark:border-red-900/60 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            {weather.isRaining ? (
-              <CloudRain className="w-4 h-4 text-sky-600 animate-pulse" />
-            ) : (
-              <Sun className="w-4 h-4 text-amber-500" />
-            )}
-            <div>
-              <span className="font-bold text-slate-900 dark:text-white">
-                Singapore Nowcast: {weather.forecast}
+        <div
+          id="weather-nowcast-card"
+          onClick={() => setIsWeatherExpanded((prev) => !prev)}
+          role="button"
+          tabIndex={0}
+          aria-expanded={isWeatherExpanded}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsWeatherExpanded((prev) => !prev);
+            }
+          }}
+          className="p-3.5 rounded-2xl bg-red-50/80 dark:bg-red-950/40 border border-red-200/90 dark:border-red-900/60 shadow-xs hover:border-red-400 dark:hover:border-red-700 transition-all cursor-pointer select-none space-y-2.5"
+        >
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-xl bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 shrink-0">
+                {weather.isRaining ? (
+                  <CloudRain className="w-4 h-4 text-sky-600 animate-pulse" />
+                ) : (
+                  <Sun className="w-4 h-4 text-amber-500" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-slate-900 dark:text-white text-xs">
+                    Singapore Nowcast: {weather.forecast}
+                  </span>
+                  <span className="text-[9px] font-black uppercase bg-red-600 text-white px-1.5 py-0.5 rounded-full">
+                    {weather.isRaining ? 'Rain Alert' : 'Fair Weather'}
+                  </span>
+                </div>
+                {!isWeatherExpanded && (
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-1 mt-0.5">
+                    {weather.advice}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[10px] font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/80 px-2 py-0.5 rounded-full">
+                data.gov.sg
               </span>
-              <p className="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-1">
-                {weather.advice}
-              </p>
+              <div className="p-1 rounded-full text-slate-500 hover:text-slate-700 dark:text-slate-400">
+                {isWeatherExpanded ? (
+                  <ChevronUp className="w-4 h-4 text-red-600 dark:text-red-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-500" />
+                )}
+              </div>
             </div>
           </div>
-          <span className="text-[10px] font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900 px-2 py-0.5 rounded-full shrink-0">
-            data.gov.sg
-          </span>
+
+          {/* Expanded Full Message & Transit Recommendations */}
+          {isWeatherExpanded && (
+            <div className="pt-2.5 border-t border-red-200/70 dark:border-red-900/50 space-y-2 text-xs animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-red-100 dark:border-red-900/40 space-y-1.5">
+                <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Umbrella className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                  <span>Commuter Shelter Advisory</span>
+                </div>
+                <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-relaxed">
+                  {weather.advice}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 rounded-xl bg-red-100/50 dark:bg-red-950/60 border border-red-200/50 dark:border-red-900/30">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">Monitored Zone</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{weather.area || 'Central Singapore'}</span>
+                </div>
+                <div className="p-2 rounded-xl bg-red-100/50 dark:bg-red-950/60 border border-red-200/50 dark:border-red-900/30">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">Transit Routing</span>
+                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                    {weather.isRaining ? 'Sheltered Paths Boosted' : 'All Routes Optimal'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 text-right pt-0.5">
+                Tap anywhere to collapse ▴
+              </div>
+            </div>
+          )}
         </div>
       )}
 
