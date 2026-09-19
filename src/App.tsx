@@ -53,6 +53,10 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { ArrivalScreen } from './components/ArrivalScreen';
 import { DiagnosticConsole } from './components/DiagnosticConsole';
 import { BottomNavBar, NavTab } from './components/BottomNavBar';
+import { EyesUpMomentCard } from './components/EyesUpMomentCard';
+import { MySingaporePassportModal } from './components/MySingaporePassportModal';
+import { findMomentForStep } from './data/eyesUpMoments';
+import { EyesUpMoment, CollectedStamp } from './types';
 import { MessageSquare, Sparkles, CheckCircle2, Navigation } from 'lucide-react';
 
 export default function App() {
@@ -90,6 +94,35 @@ export default function App() {
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState<boolean>(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
+  const [isPassportOpen, setIsPassportOpen] = useState<boolean>(false);
+
+  // Eyes Up Window Discovery State & Passport Collection
+  const [activeMoment, setActiveMoment] = useState<EyesUpMoment | null>(null);
+  const [isMomentCardOpen, setIsMomentCardOpen] = useState<boolean>(false);
+  const [collectedStamps, setCollectedStamps] = useState<CollectedStamp[]>(() => {
+    try {
+      const saved = localStorage.getItem('eyes_up_collected_stamps');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Could not load saved stamps:', e);
+    }
+    // Initial sample stamp for delightful first experience
+    return [
+      {
+        momentId: 'moment-dragon-playground',
+        title: 'Toa Payoh Dragon Playground',
+        category: 'Heritage',
+        stampBadge: {
+          icon: '🐉',
+          label: 'Dragon Playground',
+          bgGradient: 'from-amber-500 to-red-600',
+          borderTone: 'border-amber-400',
+        },
+        unlockedAt: 'First Journey • Toa Payoh',
+        routeTitle: 'Singapore Commute Explorer',
+      },
+    ];
+  });
 
   // Missed stop state
   const [missedStopState, setMissedStopState] = useState<MissedStopState>({
@@ -432,6 +465,34 @@ export default function App() {
     }
   };
 
+  // Eyes Up Moment & Stamp Handlers
+  const handleCollectStamp = (moment: EyesUpMoment) => {
+    setCollectedStamps((prev) => {
+      if (prev.some((s) => s.momentId === moment.id)) return prev;
+      const newStamp: CollectedStamp = {
+        momentId: moment.id,
+        title: moment.title,
+        category: moment.category,
+        stampBadge: moment.stampBadge,
+        unlockedAt: `Collected on ${journey.title || 'Singapore Commute'}`,
+        routeTitle: journey.title,
+      };
+      const updated = [newStamp, ...prev];
+      try {
+        localStorage.setItem('eyes_up_collected_stamps', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed saving stamp:', e);
+      }
+      return updated;
+    });
+  };
+
+  const handleTriggerManualMoment = () => {
+    const moment = findMomentForStep(activeStep, currentStepIndex, journey.title);
+    setActiveMoment(moment);
+    setIsMomentCardOpen(true);
+  };
+
   // Step navigation
   const handleNextStep = () => {
     if (currentStepIndex < journey.steps.length - 1) {
@@ -441,9 +502,21 @@ export default function App() {
       const nextStep = journey.steps[nextIdx];
       const text = nextStep.guidance[familiarity] || nextStep.guidance.full;
       speakText(text);
+
+      // Subtle Eyes Up Discovery prompt between stops
+      if (nextIdx > 0 && nextIdx < journey.steps.length - 1) {
+        setTimeout(() => {
+          const matchedMoment = findMomentForStep(nextStep, nextIdx, journey.title);
+          setActiveMoment(matchedMoment);
+          setIsMomentCardOpen(true);
+        }, 3000);
+      } else {
+        setIsMomentCardOpen(false);
+      }
     } else {
       // Arrived (Screen 7 in architecture diagram)
       setIsArrivalComplete(true);
+      setIsMomentCardOpen(false);
       const arriveText = `Congratulations! You have arrived safely at ${journey.destination}.`;
       speakText(arriveText);
     }
@@ -643,6 +716,8 @@ export default function App() {
           }}
           onOpenShareModal={() => setIsShareModalOpen(true)}
           onOpenPlanModal={() => setIsPlanModalOpen(true)}
+          onOpenPassport={() => setIsPassportOpen(true)}
+          passportStampCount={collectedStamps.length}
           onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
           origin={journey.origin}
           destination={journey.destination}
@@ -726,6 +801,7 @@ export default function App() {
                     onNextStep={handleNextStep}
                     onPrevStep={handlePrevStep}
                     onSpeakInstruction={speakCurrentStep}
+                    onTriggerMoment={handleTriggerManualMoment}
                     isSpeaking={isSpeaking}
                   />
 
@@ -815,6 +891,8 @@ export default function App() {
               }}
               isPowerSaving={isPowerSaving}
               onTogglePowerSaving={() => setIsPowerSaving(!isPowerSaving)}
+              onOpenPassport={() => setIsPassportOpen(true)}
+              passportStampCount={collectedStamps.length}
               onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
             />
           )}
@@ -889,6 +967,27 @@ export default function App() {
           onTapVoice={toggleListen}
           isListening={isListening}
           isSpeaking={isSpeaking}
+        />
+
+        {/* Eyes Up Moment Window-Side Discovery Slide-Up Card */}
+        {isMomentCardOpen && !isArrivalComplete && activeTab === 'travel' && (
+          <EyesUpMomentCard
+            moment={activeMoment || findMomentForStep(activeStep, currentStepIndex, journey.title)}
+            onDismiss={() => setIsMomentCardOpen(false)}
+            onCollect={handleCollectStamp}
+            onOpenPassport={() => {
+              setIsMomentCardOpen(false);
+              setIsPassportOpen(true);
+            }}
+            isAudioMuted={isAudioMuted}
+          />
+        )}
+
+        {/* My Singapore Passport Modal */}
+        <MySingaporePassportModal
+          isOpen={isPassportOpen}
+          onClose={() => setIsPassportOpen(false)}
+          collectedStamps={collectedStamps}
         />
       </div>
     </div>

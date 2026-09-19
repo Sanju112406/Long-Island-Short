@@ -29,6 +29,7 @@ interface ActiveStepCardProps {
   onNextStep: () => void;
   onPrevStep: () => void;
   onSpeakInstruction: () => void;
+  onTriggerMoment?: () => void;
   isSpeaking?: boolean;
 }
 
@@ -43,6 +44,7 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
   onNextStep,
   onPrevStep,
   onSpeakInstruction,
+  onTriggerMoment,
   isSpeaking = false,
 }) => {
   const instructionText = step.guidance[familiarity] || step.guidance.full;
@@ -144,21 +146,41 @@ export const ActiveStepCard: React.FC<ActiveStepCardProps> = ({
 
             {/* Audio speak button */}
             <button
-              id="hear-instruction-button"
+              id="step-audio-button"
               type="button"
               onClick={onSpeakInstruction}
-              aria-label="Listen to Eyes Up voice guidance"
-              className={`p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
+              className={`p-2 rounded-xl transition-all cursor-pointer ${
                 isSpeaking
                   ? 'bg-red-600 text-white animate-pulse'
-                  : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-red-50 hover:text-red-700 dark:hover:bg-slate-600 shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
               }`}
+              title="Read guidance aloud"
             >
               <Volume2 className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
+
+      {/* Eyes Up Window Discovery Quick Trigger */}
+      {onTriggerMoment && (
+        <div className="mb-3">
+          <button
+            id="active-step-trigger-moment-button"
+            type="button"
+            onClick={onTriggerMoment}
+            className="w-full py-1.5 px-3 rounded-2xl bg-amber-50 hover:bg-amber-100/90 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 border border-amber-200/80 dark:border-amber-900/60 text-amber-900 dark:text-amber-200 text-xs font-bold transition-colors flex items-center justify-between cursor-pointer group"
+          >
+            <span className="flex items-center gap-1.5">
+              <span className="text-sm">🔭</span>
+              <span>Window-Side Discovery: Passing Landmarks</span>
+            </span>
+            <span className="text-[10px] bg-amber-200/80 dark:bg-amber-900 px-2 py-0.5 rounded-full text-amber-900 dark:text-amber-200 font-extrabold group-hover:scale-105 transition-transform">
+              10s Story ✨
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Prominent Landmark Highlight Banner */}
       <div

@@ -160,3 +160,37 @@ export interface SharedETAState {
   lastUpdated: string;
   isArrived: boolean;
 }
+
+export type DiscoveryCategory = 'Heritage' | 'Architecture' | 'Art' | 'Nature' | 'Neighbourhood';
+
+export interface EyesUpMoment {
+  id: string;
+  title: string;
+  subtitle: string;
+  nearbyTransitCorridor: string;
+  shortFact: string;
+  audioStory: string;
+  category: DiscoveryCategory;
+  stampBadge: {
+    icon: string;
+    label: string;
+    bgGradient: string;
+    borderTone: string;
+  };
+  keywords: string[];
+}
+
+export interface CollectedStamp {
+  momentId: string;
+  title: string;
+  category: DiscoveryCategory;
+  stampBadge: {
+    icon: string;
+    label: string;
+    bgGradient: string;
+    borderTone: string;
+  };
+  unlockedAt: string;
+  routeTitle: string;
+}
+

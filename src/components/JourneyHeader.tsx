@@ -13,6 +13,8 @@ interface JourneyHeaderProps {
   onToggleAudioMute: () => void;
   onOpenShareModal: () => void;
   onOpenPlanModal: () => void;
+  onOpenPassport?: () => void;
+  passportStampCount?: number;
   onOpenDiagnostics?: () => void;
   origin: string;
   destination: string;
@@ -27,6 +29,8 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
   onToggleAudioMute,
   onOpenShareModal,
   onOpenPlanModal,
+  onOpenPassport,
+  passportStampCount = 0,
   onOpenDiagnostics,
   origin,
   destination,
@@ -86,6 +90,26 @@ export const JourneyHeader: React.FC<JourneyHeaderProps> = ({
             <Clock className="w-3 h-3 text-red-500 animate-pulse shrink-0" />
             <span>{timeString}</span>
           </div>
+
+          {/* My Singapore Passport Button */}
+          {onOpenPassport && (
+            <button
+              id="header-passport-button"
+              type="button"
+              onClick={onOpenPassport}
+              aria-label="Open My Singapore Passport"
+              title="My Singapore Passport"
+              className="relative p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer"
+            >
+              <span className="text-base">📕</span>
+              {passportStampCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center shadow-xs">
+                  {passportStampCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Diagnostic Console Button */}
           {onOpenDiagnostics && (
             <button

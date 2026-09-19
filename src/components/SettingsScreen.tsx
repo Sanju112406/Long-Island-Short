@@ -9,6 +9,8 @@ interface SettingsScreenProps {
   onToggleVoiceMuted: () => void;
   isPowerSaving: boolean;
   onTogglePowerSaving: () => void;
+  onOpenPassport?: () => void;
+  passportStampCount?: number;
   onOpenDiagnostics?: () => void;
 }
 
@@ -19,6 +21,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onToggleVoiceMuted,
   isPowerSaving,
   onTogglePowerSaving,
+  onOpenPassport,
+  passportStampCount = 0,
   onOpenDiagnostics,
 }) => {
   return (
@@ -34,6 +38,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
       {/* Settings list */}
       <div className="space-y-3">
+        {/* My Singapore Passport Card */}
+        {onOpenPassport && (
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-red-50 to-amber-50 dark:from-red-950/40 dark:to-amber-950/30 border border-red-200/90 dark:border-red-900/60 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 flex items-center justify-center text-xl shadow-xs">
+                📕
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-slate-900 dark:text-white">
+                  My Singapore Passport
+                </h4>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                  {passportStampCount} Landmark Stamps Collected
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenPassport}
+              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+            >
+              <span>Open</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
         {/* Voice Guidance */}
         <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
