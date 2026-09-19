@@ -21,7 +21,7 @@ constant instructions. This aligns with SMRT's vision of *"Moving People.
 Enhancing Lifestyles"* by making everyday journeys more manageable and
 engaging.
 
-## The problem
+## Why this exists
 
 Navigation apps are effective at telling commuters where to go, but they
 often require users to continuously look at their phones and follow a map —
@@ -36,7 +36,7 @@ their normal journey perfectly well, but a train disruption, missed bus
 stop, or wrong turn can suddenly turn a familiar commute into an unfamiliar
 one — and the map-dependence cycle offers little help in that moment.
 
-## Our solution
+## How it helps
 
 - **Plan around your needs.** Compare public-transport routes, specify an
   arrival time, add stopovers, or find a meeting point with a friend before
@@ -63,7 +63,7 @@ one — and the map-dependence cycle offers little help in that moment.
   short landmark stories along the way, with collectible stamps in a "My
   Singapore" passport.
 
-## What makes Eyes Up unique
+## Design philosophy
 
 Eyes Up's central idea is that commuters shouldn't have to keep interpreting
 a map to feel confident about their journey. Narration connects directions
@@ -102,7 +102,7 @@ actually asked and what it doesn't yet know. Nobody tells it "call
 `checkJourneyImpact` now"; it decides that on its own, the same way a human
 companion would glance at their phone before answering. Each capability is
 backed by one of the deterministic services in the
-[feature deep dive](#feature-deep-dive), so the agent's actions always
+[capabilities in detail](#capabilities-in-detail), so the agent's actions always
 bottom out in real LTA, OneMap, or data.gov.sg data — it observes the
 world through tools, it never talks to those APIs directly.
 
@@ -170,7 +170,22 @@ from (see [Data sources & attribution](#data-sources--attribution)).
 
 ## Run Locally
 
-**Prerequisites:** Node.js
+**Prerequisites:**
+
+- **Node.js 22.x** (see `engines` in [package.json](package.json)) and npm.
+- A **Gemini API key** from [Google AI Studio](https://aistudio.google.com/)
+  — powers the AI companion chat; the app falls back to a rule-based
+  companion without one, so this is optional for local testing.
+- An **LTA DataMall account key** — free signup at
+  [datamall.lta.gov.sg](https://datamall.lta.gov.sg/) — for live train
+  alerts, bus arrivals, and facility/traffic data.
+- A **OneMap Singapore account** (email + password) — free signup at
+  [onemap.gov.sg](https://www.onemap.gov.sg/) — for geocoding and live
+  transit routing.
+
+The LTA and OneMap accounts are only needed to see *live* data; the app
+still runs and is fully usable without any keys, using fixed fallback data
+tagged accordingly (see [Data sources & attribution](#data-sources--attribution)).
 
 1. Install dependencies:
    `npm install`
@@ -246,7 +261,7 @@ UI never silently shows sample data as if it were real.
 | **data.gov.sg** | 2-hr nowcast, 24-hr forecast, 4-day outlook, rainfall, air temperature, humidity, wind, PM2.5 | No — keyless |
 | **OpenStreetMap** | Map tiles (`© OpenStreetMap contributors`, shown in-app) | No — keyless |
 
-### Feature deep dive
+### Capabilities in detail
 
 **Conversational AI companion.** The commuter's question travels to Gemini
 alongside their live journey context — which step they're on, their chosen
